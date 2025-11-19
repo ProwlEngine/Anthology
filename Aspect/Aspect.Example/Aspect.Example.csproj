@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Aspect.Weaver\Aspect.Weaver.csproj" />
+    <ProjectReference Include="..\Aspect\Aspect.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
