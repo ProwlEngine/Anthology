@@ -13,9 +13,11 @@ public static class Program
 
     static GraphicsDevice device;
     static CommandBuffer buffer;
-    static Mesh triangle;
+    static Mesh quad;
     static ShaderProgram shader;
     static PropertySet properties;
+    static Texture texture;
+    static Sampler sampler;
 
 
     private static void Main()
@@ -46,8 +48,11 @@ public static class Program
         device.SyncToVerticalBlank = false;
 
         shader = ShaderLoader.CreateShader(device);
-        triangle = ModelLoader.CreateTriangle(device);
+        quad = ModelLoader.CreateQuad(device);
+        (texture, sampler) = ImageLoader.Load(device, "Cat_cat.png");
         buffer = device.ResourceFactory.CreateCommandBuffer();
+        properties = new();
+        properties.SetTexture("MainTexture", texture, sampler);
 
         window.Resize += (x) => device.ResizeMainWindow((uint)x.X, (uint)x.Y);
         window.Render += Render;
@@ -60,7 +65,8 @@ public static class Program
         buffer.SetFramebuffer(device.SwapchainFramebuffer);
         buffer.ClearColorTarget(0, new Color(0.10f, 0.12f, 0.16f, 1.0f));
         buffer.SetShader(shader);
-        buffer.SetVertexSource(triangle);
+        buffer.SetProperties(properties);
+        buffer.SetVertexSource(quad);
         buffer.DrawIndexed();
         buffer.End();
 
@@ -74,7 +80,7 @@ public static class Program
     public static void Close()
     {
         buffer.Dispose();
-        triangle.Dispose();
+        quad.Dispose();
         shader.Dispose();
         device.Dispose();
     }
