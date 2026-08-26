@@ -314,6 +314,27 @@ namespace Prowl.Quill
         public Transform2D TextureTransform;
 
         /// <summary>
+        /// UV window the texture transform maps onto the shape (uMin, vMin, uMax, vMax); sampling
+        /// stays inside it. uMax &lt;= uMin (the default) means no window, so tiling brushes are
+        /// unaffected.
+        /// </summary>
+        public Float4 TextureWindow;
+
+        /// <summary>
+        /// Inset the window half a texel before use. Needed for blending filters (the boundary
+        /// texel is shared with the neighbour); leave off for pure nearest sampling to stay
+        /// texel-exact.
+        /// </summary>
+        public bool TextureWindowInset;
+
+        /// <summary>
+        /// Keep the AA fringe on a windowed rect fill. Off (default) draws a hard-edged quad so the
+        /// mapping stays exact; DrawImage turns it on for feathered edges, at the cost of the
+        /// fringe padding's slight squeeze.
+        /// </summary>
+        public bool TextureWindowKeepFringe;
+
+        /// <summary>
         /// The type of brush (None, Linear, Radial, or Box gradient).
         /// </summary>
         public BrushType Type;
@@ -392,6 +413,9 @@ namespace Prowl.Quill
                 && BackdropBlur == other.BackdropBlur
                 && DrawCall.SameTransform(in Transform, in other.Transform)
                 && DrawCall.SameTransform(in TextureTransform, in other.TextureTransform)
+                && TextureWindow.Equals(other.TextureWindow)
+                && TextureWindowInset == other.TextureWindowInset
+                && TextureWindowKeepFringe == other.TextureWindowKeepFringe
                 && (Shader == null || SameUniforms(Uniforms, other.Uniforms));
         }
 
@@ -418,6 +442,8 @@ namespace Prowl.Quill
                 hash = hash * 31 + Transform.GetHashCode();
                 hash = hash * 31 + (Texture?.GetHashCode() ?? 0);
                 hash = hash * 31 + TextureTransform.GetHashCode();
+                hash = hash * 31 + TextureWindow.GetHashCode();
+                hash = hash * 31 + (TextureWindowInset ? 1 : 0) + (TextureWindowKeepFringe ? 2 : 0);
                 if (Shader != null)
                 {
                     hash = hash * 31 + Shader.GetHashCode();
@@ -479,6 +505,7 @@ namespace Prowl.Quill
             brush = new Brush();
             brush.Transform = Transform2D.Identity;
             brush.TextureTransform = Transform2D.Identity;
+            brush.TextureWindow = default;   // uMax <= uMin: no window
             brush.Texture = null;
             brush.Shader = null;
             brush.Uniforms = null;
@@ -845,11 +872,13 @@ namespace Prowl.Quill
         {
             _state.brush.Type = BrushType.None;
             _state.brush.Texture = texture;
-            // Default texture transform: 1 pixel = 1 texel, starting at origin
+            // Default texture transform: 1 pixel = 1 texel. Zero size (texture died mid-frame)
+            // keeps Identity rather than an infinite scale.
             if (texture != null && _state.brush.TextureTransform == Transform2D.Identity)
             {
                 var size = _renderer.GetTextureSize(texture);
-                _state.brush.TextureTransform = Transform2D.CreateScale(1.0f / size.X, 1.0f / size.Y);
+                if (size.X > 0 && size.Y > 0)
+                    _state.brush.TextureTransform = Transform2D.CreateScale(1.0f / size.X, 1.0f / size.Y);
             }
             InvalidateDrawState();
         }
@@ -866,6 +895,23 @@ namespace Prowl.Quill
         }
 
         /// <summary>
+        /// Declares the UV window the brush texture transform maps onto the next shape (e.g. a
+        /// sprite's atlas cell) so sampling cannot reach past it - no shader involvement. Windowed
+        /// rect fills draw hard-edged; rounded fills keep their fringe and pad the mapping under it
+        /// instead (see <see cref="PadBrushTextureForFringe"/>). Pass uMax &lt;= uMin to clear;
+        /// <see cref="ClearBrushTexture"/> also clears it.
+        /// </summary>
+        /// <param name="insetHalfTexel">Inset the window half a texel: needed for blending filters;
+        /// pass false for pure nearest-filtered textures to keep the mapping texel-exact.</param>
+        public void SetBrushTextureWindow(float uMin, float vMin, float uMax, float vMax, bool insetHalfTexel = true)
+        {
+            _state.brush.TextureWindow = new Float4(uMin, vMin, uMax, vMax);
+            _state.brush.TextureWindowInset = insetHalfTexel;
+            _state.brush.TextureWindowKeepFringe = false;
+            InvalidateDrawState();
+        }
+
+        /// <summary>
         /// Clears the brush texture, reverting to solid color or gradient rendering.
         /// </summary>
         public void ClearBrushTexture()
@@ -873,6 +919,9 @@ namespace Prowl.Quill
             _state.brush.Type = BrushType.None;
             _state.brush.Texture = null;
             _state.brush.TextureTransform = Transform2D.Identity;
+            _state.brush.TextureWindow = default;
+            _state.brush.TextureWindowInset = false;
+            _state.brush.TextureWindowKeepFringe = false;
             InvalidateDrawState();
         }
 
@@ -2355,6 +2404,57 @@ namespace Prowl.Quill
         #region Primitives (Shader-Based AA)
 
         /// <summary>
+        /// Remaps the brush's (half-texel-inset) <see cref="Brush.TextureWindow"/> onto the fill's
+        /// fringe bounds so no fragment can sample outside it - the fringe extends half a pixel past
+        /// the shape and samples by fragment position. An affine map cannot be exact inside the
+        /// shape yet compressed only under the fringe, so the whole mapping squeezes slightly.
+        /// Returns true if it swapped the transform; the caller restores <paramref name="saved"/>
+        /// (and invalidates) after emitting the shape's geometry.
+        /// </summary>
+        private bool PadBrushTextureForFringe(float x, float y, float width, float height, float hp, out Transform2D saved)
+        {
+            saved = _state.brush.TextureTransform;
+
+            Float4 win = _state.brush.TextureWindow;
+            if (_state.brush.Texture == null || win.Z <= win.X || win.W <= win.Y)
+                return false;
+
+            // Exact mapping requested and no fringe to pad under: nothing to do.
+            if (!_state.brush.TextureWindowInset && hp <= 0f)
+                return false;
+
+            // Half-texel inset per axis; zero when opted out or the texture size is unknown.
+            float hu = 0f, hv = 0f;
+            if (_state.brush.TextureWindowInset)
+            {
+                var size = _renderer.GetTextureSize(_state.brush.Texture);
+                hu = size.X > 0 ? 0.5f / size.X : 0f;
+                hv = size.Y > 0 ? 0.5f / size.Y : 0f;
+            }
+            float cu = (win.X + win.Z) * 0.5f, cv = (win.Y + win.W) * 0.5f;
+            float iu = win.Z - win.X - 2f * hu;
+            float iv = win.W - win.Y - 2f * hv;
+
+            // UV side: expand the inset window back over the declared one for the caller's transform.
+            float su = iu > 1e-6f ? (win.Z - win.X) / iu : 1f;
+            float sv = iv > 1e-6f ? (win.W - win.Y) / iv : 1f;
+            Transform2D uvInset = ScaleAbout(cu, cv, su, sv);
+
+            // Screen side: grow the rect onto the fringe bounds, conjugated through the canvas
+            // transform since the stored texture transform has it folded in.
+            Transform2D grow = ScaleAbout(x + width * 0.5f, y + height * 0.5f,
+                                          (width + 2f * hp) / width, (height + 2f * hp) / height);
+            Transform2D screenGrow = _state.transform * grow * _state.transform.Inverse();
+
+            _state.brush.TextureTransform = screenGrow * saved * uvInset;
+            InvalidateDrawState();
+            return true;
+        }
+
+        private static Transform2D ScaleAbout(float cx, float cy, float sx, float sy)
+            => Transform2D.CreateTranslation(cx, cy) * Transform2D.CreateScale(sx, sy) * Transform2D.CreateTranslation(-cx, -cy);
+
+        /// <summary>
         /// Paints a Hardware-accelerated rectangle on the canvas.
         /// This does not modify or use the current path.
         /// </summary>
@@ -2376,8 +2476,16 @@ namespace Prowl.Quill
             // The fringe is expressed in logical units scaled down by the transform so it stays ~1
             // physical pixel on screen at any zoom (see FringeHalfLogical).
             float hp = FringeHalfLogical();
+            // Windowed fills drop the fringe: with no geometry outside the rect the mapping needs
+            // no squeeze. DrawImage opts back in via TextureWindowKeepFringe.
+            if (_state.brush.Texture != null && !_state.brush.TextureWindowKeepFringe
+                && _state.brush.TextureWindow.Z > _state.brush.TextureWindow.X
+                && _state.brush.TextureWindow.W > _state.brush.TextureWindow.Y)
+                hp = 0f;
             float hpx = Maths.Min(hp, width * 0.5f);
             float hpy = Maths.Min(hp, height * 0.5f);
+
+            bool padded = PadBrushTextureForFringe(x, y, width, height, hp, out Transform2D savedTexXf);
 
             Float2 i0 = TransformPoint(new Float2(x + hpx, y + hpy));
             Float2 i1 = TransformPoint(new Float2(x + width - hpx, y + hpy));
@@ -2413,6 +2521,12 @@ namespace Prowl.Quill
             }
 
             AddTriangleCount(10);
+
+            if (padded)
+            {
+                _state.brush.TextureTransform = savedTexXf;
+                InvalidateDrawState();
+            }
         }
 
         /// <summary>
@@ -2467,6 +2581,8 @@ namespace Prowl.Quill
             // only a few full matrix transforms are needed. The fringe is scaled down by the transform
             // so it stays ~1 physical pixel on screen at any zoom (see FringeHalfLogical).
             float hp = FringeHalfLogical();
+
+            bool padded = PadBrushTextureForFringe(x, y, width, height, hp, out Transform2D savedTexXf);
 
             int tlSegments = tlRadii > 0 ? Maths.Max(1, (int)Maths.Ceiling(Maths.PI * tlRadii / 2 / _state.roundingMinDistance)) : 0;
             int trSegments = trRadii > 0 ? Maths.Max(1, (int)Maths.Ceiling(Maths.PI * trRadii / 2 / _state.roundingMinDistance)) : 0;
@@ -2537,6 +2653,12 @@ namespace Prowl.Quill
             }
 
             AddTriangleCount(ringCount * 3);
+
+            if (padded)
+            {
+                _state.brush.TextureTransform = savedTexXf;
+                InvalidateDrawState();
+            }
         }
 
         /// <summary>
@@ -2681,6 +2803,10 @@ namespace Prowl.Quill
             // Configure brush to draw the texture mapped to this rectangle
             _state.brush.Texture = texture;
             _state.brush.TextureTransform = _state.transform * Transform2D.CreateTranslation(x, y) * Transform2D.CreateScale(width, height);
+            // Whole-texture window: keeps the fringe inside [0,1] on Repeat samplers.
+            _state.brush.TextureWindow = new Float4(0f, 0f, 1f, 1f);
+            _state.brush.TextureWindowInset = true;
+            _state.brush.TextureWindowKeepFringe = true;   // images keep their feathered edges
             _state.brush.Type = BrushType.None;
             _state.brush.Shader = null;
             _state.brush.Uniforms = null;
@@ -2708,6 +2834,10 @@ namespace Prowl.Quill
             var savedBrush = _state.brush;
             _state.brush.Texture = texture;
             _state.brush.TextureTransform = _state.transform * Transform2D.CreateTranslation(x, y) * Transform2D.CreateScale(width, height);
+            // Whole-texture window: keeps the fringe inside [0,1] on Repeat samplers.
+            _state.brush.TextureWindow = new Float4(0f, 0f, 1f, 1f);
+            _state.brush.TextureWindowInset = true;
+            _state.brush.TextureWindowKeepFringe = true;   // images keep their feathered edges
             _state.brush.Type = BrushType.None;
             _state.brush.Shader = null;
             _state.brush.Uniforms = null;
