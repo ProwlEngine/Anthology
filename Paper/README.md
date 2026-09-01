@@ -77,6 +77,7 @@ For a complete guide, tutorials, and API reference, please visit the **[Official
         - Very easy to integrate
         - OpenTK Example
         - Raylib Example (Less than 500 loc including shaders!)
+        - MonoGame Example
         - With more to come!
             - DirectX, Web, Unity
     - Fluent API
@@ -113,7 +114,7 @@ dotnet add package Prowl.Paper
 ```
 
 ## Initialization
-You will need a Renderer, Theres examples in the repository under Samples for OpenTK and Raylib, with more to come.
+You will need a Renderer, Theres examples in the repository under Samples for OpenTK, Raylib and MonoGame, with more to come.
 ```cs
 Paper.Initialize(yourRenderer, screenWidth, screenHeight);
 
