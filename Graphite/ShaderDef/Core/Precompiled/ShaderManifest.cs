@@ -18,7 +18,7 @@ namespace Prowl.Graphite.ShaderDef.Precompiled;
 /// source plus this manifest instead. Nothing here is WebGPU-specific, and the stage source is kept
 /// in separate sibling files so generated WGSL stays readable and diffable.
 /// </remarks>
-public sealed class ShaderManifest
+public sealed partial class ShaderManifest
 {
     /// <summary>Manifest format version, bumped when the shape below changes incompatibly.</summary>
     public const int CurrentVersion = 1;
@@ -132,12 +132,17 @@ public sealed class ShaderManifest
     }
 
 
-    private static readonly JsonSerializerOptions s_json = new()
-    {
+    // Serialization goes through a source-generated context rather than reflection. .NET WebAssembly
+    // disables reflection-based JSON by default, and the browser is exactly where manifests are read,
+    // so a reflecting serializer would throw at runtime in the one place this type matters most.
+    [JsonSourceGenerationOptions(
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault
-    };
+        UseStringEnumConverter = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonSerializable(typeof(ShaderManifest))]
+    internal sealed partial class ManifestContext : JsonSerializerContext
+    {
+    }
 
 
     /// <summary>
@@ -260,12 +265,12 @@ public sealed class ShaderManifest
 
 
     /// <summary>Serializes this manifest to indented JSON.</summary>
-    public string ToJson() => JsonSerializer.Serialize(this, s_json);
+    public string ToJson() => JsonSerializer.Serialize(this, ManifestContext.Default.ShaderManifest);
 
 
     /// <summary>Deserializes a manifest from JSON.</summary>
     /// <param name="json">JSON produced by <see cref="ToJson"/>.</param>
     public static ShaderManifest FromJson(string json)
-        => JsonSerializer.Deserialize<ShaderManifest>(json, s_json)
+        => JsonSerializer.Deserialize(json, ManifestContext.Default.ShaderManifest)
            ?? throw new InvalidOperationException("Shader manifest JSON deserialized to null.");
 }

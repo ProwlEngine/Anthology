@@ -1,31 +1,44 @@
-# WebGPU shim harness
+# WebGPU harnesses
 
-A browser page that drives `Interop/graphite-webgpu.js` through the same call sequence
-`WgpuInterop` makes from C#, using WGSL and a manifest generated from
-`Samples/HelloTriangle/Shader.slang` by `Tools/ShaderPrecompile`.
+Three ways to exercise the interop boundary, in increasing order of how much is real.
+
+## 1. Shim only, no browser
 
 ```
-node shim.test.mjs   # mock WebGPU under Node: no browser, no GPU
-./run.sh             # real browser page, serves on :8731
+node shim.test.mjs
 ```
 
-`shim.test.mjs` runs the shim against a mock WebGPU and checks the bookkeeping the browser cannot
-conveniently assert: handle allocation and reuse, what `release` destroys, and the
-handle-to-object substitution inside every JSON descriptor. It needs nothing but Node.
+Runs `Interop/graphite-webgpu.js` against a mock WebGPU under plain Node. Covers the bookkeeping a
+browser cannot conveniently assert: handle allocation and reuse, what `release` destroys, and the
+handle-to-object substitution inside every JSON descriptor. Needs nothing but Node.
 
-For the browser page:
+## 2. Interop boundary, no GPU
 
-Open the printed URL in a browser with WebGPU. A green **PASS** banner means every shim call
-succeeded, the triangle rendered, and the device reported no errors. The page also sets
-`window.__harness = { ok, log }` so an automated check can read the result.
+```
+dotnet build InteropProof/InteropProof.csproj
+node InteropProof/run-node.mjs
+```
 
-## What this covers
+Runs the real .NET WebAssembly app against a mock WebGPU. The runtime, the `[JSImport]` marshalling,
+the shim and the ahead-of-time shader loading are all real; only the GPU is faked. This is what
+catches problems a compile cannot: reflection-free JSON, `Span<byte>` byte layout across the
+boundary, whether an empty `Span<int>` really omits the dynamic offsets argument. It prints every
+WebGPU call the C# code made, with the leading bytes of each upload.
 
-- The handle table: allocation, reuse, and that `endRenderPass` and `submit` release what they own.
-- The JSON descriptor shapes the cold path accepts.
-- The WebGPU calls themselves, against real generated WGSL.
+## 3. Everything real
 
-## What this does not cover
+```
+./run.sh                                    # shim driven from JavaScript, serves on :8731
+```
 
-C#-to-JavaScript marshalling. That needs the `wasm-tools` workload and a .NET WebAssembly app,
-which arrives with the browser sample host.
+or, for the C# path on a real GPU:
+
+```
+./InteropProof/serve.sh                     # builds and serves on :8080
+```
+
+A green **PASS** banner means every call succeeded and the device reported no errors. Both pages also
+set `window.__proof` / `window.__harness` so an automated check can read the result.
+
+Requires the `wasm-tools` workload (`sudo dotnet workload install wasm-tools`) for anything that
+builds an AppBundle.

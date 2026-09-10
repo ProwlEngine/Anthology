@@ -18,6 +18,18 @@
         <ProjectReference Include="..\Graphite\Prowl.Graphite.csproj" />
     </ItemGroup>
 
+    <!-- The interop layer stays internal; the backend is the public surface. The harness app drives
+         it directly on purpose, to test the boundary before a backend sits on top of it. -->
+    <ItemGroup>
+        <InternalsVisibleTo Include="InteropProof" />
+    </ItemGroup>
+
+    <!-- Harness/ holds the browser test page and its own app project, not library code. -->
+    <ItemGroup>
+        <Compile Remove="Harness/**/*.cs" />
+        <None Remove="Harness/**/*" />
+    </ItemGroup>
+
     <!-- The shim ships beside the assembly so a consuming app can serve it from wwwroot. -->
     <ItemGroup>
         <Content Include="Interop\graphite-webgpu.js" CopyToOutputDirectory="PreserveNewest" />

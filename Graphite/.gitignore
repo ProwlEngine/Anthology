@@ -401,3 +401,5 @@ FodyWeavers.xsd
 
 # WebGPU shim harness staging output
 Graphite.WebGPU/Harness/.serve/
+Graphite.WebGPU/Harness/InteropProof/bin/
+Graphite.WebGPU/Harness/InteropProof/obj/

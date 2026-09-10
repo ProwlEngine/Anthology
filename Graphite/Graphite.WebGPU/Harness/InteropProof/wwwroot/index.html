@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <link rel="icon" href="data:,">
-<title>Graphite WebGPU shim harness</title>
+<title>Graphite WebGPU interop proof</title>
 <style>
   body { background:#14181b; color:#dfe6e9; font:14px/1.5 system-ui, sans-serif; margin:0; padding:24px; }
   h1 { font-size:17px; font-weight:600; margin:0 0 4px; }
@@ -16,11 +16,11 @@
 </style>
 </head>
 <body>
-  <h1>Graphite WebGPU shim harness</h1>
-  <p class="sub">Drives graphite-webgpu.js through the sequence WgpuInterop calls from C#.</p>
+  <h1>Graphite WebGPU interop proof</h1>
+  <p class="sub">C# in WebAssembly drawing a triangle through WgpuInterop. No Graphite device involved.</p>
   <canvas id="graphite-canvas" width="400" height="400"></canvas>
   <div id="result">running...</div>
   <div id="log"></div>
-  <script type="module" src="./harness.js"></script>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>

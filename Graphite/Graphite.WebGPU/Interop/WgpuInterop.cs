@@ -29,8 +29,12 @@ internal static partial class WgpuInterop
     /// <summary>
     /// Loads the shim module. Must complete before any other member here is called.
     /// </summary>
-    /// <param name="modulePath">URL the shim is served from.</param>
-    public static async Task LoadAsync(string modulePath = "./graphite-webgpu.js")
+    /// <param name="modulePath">
+    /// URL the shim is served from. Resolved against the .NET runtime module, which lives in
+    /// _framework, so the default reaches a shim sitting beside index.html at the app root. It is
+    /// not resolved against the page, which is why a leading "./" would look in the wrong place.
+    /// </param>
+    public static async Task LoadAsync(string modulePath = "../graphite-webgpu.js")
     {
         if (s_loaded)
             return;
