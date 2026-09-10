@@ -398,3 +398,6 @@ FodyWeavers.xsd
 *.sln.iml
 
 *.claude
+
+# WebGPU shim harness staging output
+Graphite.WebGPU/Harness/.serve/
