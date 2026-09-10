@@ -31,6 +31,9 @@
     <Folder Name="/Samples/Web/">
         <Project Path="Samples/Web/Shared.Web/Shared.Web.csproj" />
         <Project Path="Samples/Web/HelloTriangle/HelloTriangle.Web.csproj" />
+        <Project Path="Samples/Web/TexturedQuad/TexturedQuad.Web.csproj" />
+        <Project Path="Samples/Web/Cube/Cube.Web.csproj" />
+        <Project Path="Samples/Web/CubeGrid/CubeGrid.Web.csproj" />
     </Folder>
     <Folder Name="/Tools/">
         <Project Path="Tools/SlangQuickCompile/SlangQuickCompile.csproj" />

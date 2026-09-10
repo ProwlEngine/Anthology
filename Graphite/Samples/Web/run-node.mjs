@@ -168,7 +168,13 @@ const status = { textContent: "", classList: { add() {} } };
 // so these stand in with a fixed size and a recognisable pattern; the point is to exercise the
 // upload path, not to check the pixels.
 const STUB_IMAGE = 4;
-globalThis.createImageBitmap = async () => ({ width: STUB_IMAGE, height: STUB_IMAGE, close() {} });
+globalThis.createImageBitmap = async () => {
+    // close() zeroes the dimensions, exactly as the specification requires. Without that the mock
+    // silently accepted reading the size after closing, which a real browser does not.
+    const bitmap = { width: STUB_IMAGE, height: STUB_IMAGE };
+    bitmap.close = () => { bitmap.width = 0; bitmap.height = 0; };
+    return bitmap;
+};
 globalThis.OffscreenCanvas = class {
     constructor(width, height) { this.width = width; this.height = height; }
     getContext() {

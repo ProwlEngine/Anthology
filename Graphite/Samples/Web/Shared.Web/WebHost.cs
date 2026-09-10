@@ -51,6 +51,17 @@ public static partial class WebHost
     [JSImport("baseUrl", Module)]
     internal static partial string BaseUrl();
 
+    [JSImport("queryParameter", Module)]
+    private static partial string QueryParameterCore(string name);
+
+
+    /// <summary>
+    /// Reads a setting from the page URL, which is how a browser sample takes what a desktop sample
+    /// would take from its command line. Empty when the parameter is absent.
+    /// </summary>
+    /// <param name="name">Query parameter name.</param>
+    public static string QueryParameter(string name) => QueryParameterCore(name);
+
 
     /// <summary>
     /// Creates a canvas-backed device, runs <paramref name="load"/>, then drives

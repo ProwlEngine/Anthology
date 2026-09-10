@@ -85,7 +85,8 @@ public sealed class WebFrameTimer
 
     /// <summary>Folds one frame's delta into the running average and updates the status line.</summary>
     /// <param name="deltaSeconds">Seconds since the previous frame.</param>
-    public void Frame(double deltaSeconds)
+    /// <param name="note">Optional extra detail, such as how much the sample is drawing.</param>
+    public void Frame(double deltaSeconds, string? note = null)
     {
         _smoothedDelta += (deltaSeconds - _smoothedDelta) * Smoothing;
         _sinceReport += deltaSeconds;
@@ -99,6 +100,7 @@ public sealed class WebFrameTimer
         double milliseconds = _smoothedDelta * 1000.0;
         double fps = _smoothedDelta > 0 ? 1.0 / _smoothedDelta : 0;
 
-        WebHost.SetStatus($"{_device.DeviceName} ({_device.VendorName}) — {milliseconds:F2} ms, {fps:F0} fps");
+        string suffix = string.IsNullOrEmpty(note) ? string.Empty : $" — {note}";
+        WebHost.SetStatus($"{_device.DeviceName} ({_device.VendorName}) — {milliseconds:F2} ms, {fps:F0} fps{suffix}");
     }
 }

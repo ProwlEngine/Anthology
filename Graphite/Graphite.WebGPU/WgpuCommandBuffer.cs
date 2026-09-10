@@ -44,6 +44,12 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
     private Viewport? _pendingViewport;
     private (uint X, uint Y, uint Width, uint Height)? _pendingScissor;
 
+    // Last vertex and index bindings, so a run of draws over the same mesh does not re-send them.
+    // Every one of these is an interop call, and the grid sample makes thousands of draws a frame.
+    private readonly List<(int Handle, uint Offset)> _boundVertexBuffers = [];
+    private (int Handle, string Format) _boundIndexBuffer;
+    private readonly List<int> _boundGroups = [];
+
     // Scratch reused every draw so binding allocates nothing per call.
     private readonly List<WgpuDescriptors.BindEntry> _entryScratch = [];
     private readonly List<int> _dynamicOffsets = [];
@@ -156,6 +162,11 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
         _queuedColorClears.Clear();
         _queuedDepthClear = null;
         _boundPipeline = WgpuInterop.NullHandle;
+
+        // Bindings do not survive a render pass, so nothing recorded in the last one can be assumed.
+        _boundVertexBuffers.Clear();
+        _boundIndexBuffer = default;
+        _boundGroups.Clear();
 
         ApplyPendingPassState();
     }
@@ -286,6 +297,9 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
     {
         VertexLayoutDescription[] layouts = program.VertexLayoutsArray;
 
+        while (_boundVertexBuffers.Count < layouts.Length)
+            _boundVertexBuffers.Add((WgpuInterop.NullHandle, 0));
+
         for (uint slot = 0; slot < layouts.Length; slot++)
         {
             _currentVertexSource!.ResolveSlot(slot, in layouts[slot], out VertexBinding binding);
@@ -293,7 +307,11 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
             WgpuBuffer buffer = (WgpuBuffer)binding.Buffer;
             buffer.MarkInFlight(_device, ExecutionId);
 
+            if (_boundVertexBuffers[(int)slot] == (buffer.Handle, binding.Offset))
+                continue;
+
             WgpuInterop.SetVertexBuffer(_pass, (int)slot, buffer.Handle, (int)binding.Offset, 0);
+            _boundVertexBuffers[(int)slot] = (buffer.Handle, binding.Offset);
         }
     }
 
@@ -313,9 +331,19 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
 
             int group = _bindGroups.Get(bindGroupLayouts[set], System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_entryScratch));
 
+            while (_boundGroups.Count <= set)
+                _boundGroups.Add(WgpuInterop.NullHandle);
+
+            // A group with dynamic offsets has to be re-sent even when unchanged, because the offset
+            // travels with the call rather than the group.
+            if (_boundGroups[set] == group && _dynamicOffsets.Count == 0)
+                continue;
+
             WgpuInterop.SetBindGroup(
                 _pass, set, group,
                 System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_dynamicOffsets));
+
+            _boundGroups[set] = group;
         }
     }
 
@@ -459,7 +487,13 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
         // first index; drawing the full count from a non-zero start would run past the buffer.
         uint drawCount = indexCount > indexStart ? indexCount - indexStart : 0;
 
-        WgpuInterop.SetIndexBuffer(_pass, buffer.Handle, WgpuFormats.IndexFormat(format), 0, 0);
+        string indexFormat = WgpuFormats.IndexFormat(format);
+        if (_boundIndexBuffer != (buffer.Handle, indexFormat))
+        {
+            WgpuInterop.SetIndexBuffer(_pass, buffer.Handle, indexFormat, 0, 0);
+            _boundIndexBuffer = (buffer.Handle, indexFormat);
+        }
+
         WgpuInterop.DrawIndexed(_pass, (int)drawCount, (int)instanceCount, (int)indexStart, vertexOffset, (int)instanceStart);
     }
 

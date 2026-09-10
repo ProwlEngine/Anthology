@@ -68,19 +68,28 @@ export function canvasHeight(selector) {
 // Decodes an image to tightly packed RGBA bytes. The browser owns every codec the desktop samples
 // were using Magick.NET for, so this hands back raw pixels the texture upload can take directly.
 export async function decodeImage(url) {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`${response.status} fetching ${url}`);
+    // Resolved against the page rather than left relative: the browser would do this implicitly, but
+    // being explicit makes the same call work anywhere fetch wants an absolute URL.
+    const absolute = new URL(url, document.baseURI).href;
+
+    const response = await fetch(absolute);
+    if (!response.ok) throw new Error(`${response.status} fetching ${absolute}`);
 
     const bitmap = await createImageBitmap(await response.blob(), { imageOrientation: "flipY" });
 
+    // Read the size before closing: a closed ImageBitmap reports 0 by 0, and reading it afterwards
+    // produced a zero-sized texture that only failed once a real browser was involved.
+    const width = bitmap.width;
+    const height = bitmap.height;
+
     // OffscreenCanvas is the only way to read pixels back out of an ImageBitmap.
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const canvas = new OffscreenCanvas(width, height);
     const context = canvas.getContext("2d", { willReadFrequently: true });
     context.drawImage(bitmap, 0, 0);
-    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    const pixels = context.getImageData(0, 0, width, height);
     bitmap.close();
 
-    return { width: bitmap.width, height: bitmap.height, data: pixels.data };
+    return { width, height, data: pixels.data };
 }
 
 export function imageWidth(image) { return image.width; }
@@ -89,7 +98,10 @@ export function imageHeight(image) { return image.height; }
 // Copies the decoded pixels into a span the caller owns. Called once per image, so the copy is not
 // worth avoiding; keeping the pixels on the JS side until asked for keeps the sizes explicit.
 export function copyImagePixels(image, destination) {
-    destination.set(image.data.subarray(0, destination.length));
+    // getImageData hands back a Uint8ClampedArray, and the .NET memory view will only accept a plain
+    // Uint8Array. This is a view over the same bytes, not another copy.
+    const source = new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength);
+    destination.set(source.subarray(0, destination.length));
 }
 
 // -- page ---------------------------------------------------------------------
@@ -110,4 +122,11 @@ export function reportError(message) {
 
 export function baseUrl() {
     return document.baseURI;
+}
+
+// Lets a sample take a setting from the URL, which is the browser's equivalent of a command line.
+// Falls back to the document base so this also works where there is no location, such as a test host.
+export function queryParameter(name) {
+    const href = globalThis.location?.href ?? document.baseURI;
+    return new URL(href).searchParams.get(name) ?? "";
 }

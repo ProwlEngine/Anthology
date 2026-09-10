@@ -76,6 +76,28 @@ but the fence was never signalled, nothing was reclaimed, and the next `Dequeue`
 fences always signalled before the next frame; a real queue does not. The wait now signals the task
 it was asked to wait for, and the mock resolves completion on a delay longer than a frame.
 
+### Found by porting the remaining samples
+
+**Image URLs were resolved by ambient page context.** The host fetched a relative path and relied on
+the browser resolving it against the document. It now resolves explicitly against `document.baseURI`,
+which behaves identically in a browser and works anywhere `fetch` wants an absolute URL.
+
+**Image dimensions were read from a closed ImageBitmap.** `bitmap.close()` ran before
+`bitmap.width` and `bitmap.height` were read, and a closed ImageBitmap reports zero for both, so
+every texture came out zero-sized and Graphite rejected it. The mock's `close()` was a no-op, which
+is exactly why it passed there and failed on hardware; it now zeroes the dimensions as the
+specification requires.
+
+**Decoded pixels were the wrong array type.** `getImageData` returns a `Uint8ClampedArray` and the
+.NET memory view only accepts a plain `Uint8Array`, so every texture upload failed with an assert
+naming neither. A view over the same bytes fixes it without another copy.
+
+**Every draw re-sent bindings that had not changed.** CubeGrid draws thousands of cubes over one
+shared mesh, and each draw was re-binding three vertex buffers and an index buffer. At two thousand
+cubes that was eighteen thousand vertex binds a frame, each an interop call. Tracking what is already
+bound cut it to nine. Bind groups are still re-sent per draw, and have to be: the dynamic offset
+travels with the call rather than the group.
+
 ### Found by running against a mock
 
 **Every frame opened an empty render pass.** The render graph sets a viewport before the sample
