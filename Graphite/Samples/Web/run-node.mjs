@@ -71,17 +71,28 @@ function checkPipeline(desc) {
     if (desc.depthStencil && !desc.depthStencil.format) problems.push("depthStencil with no format");
 }
 
-const pass = () => obj("pass", {
-    setPipeline: () => count("setPipeline"),
-    setBindGroup: (...a) => count(`setBindGroup(${a.length} args)`),
-    setVertexBuffer: () => count("setVertexBuffer"),
-    setIndexBuffer: () => count("setIndexBuffer"),
-    setViewport: () => count("setViewport"),
-    setScissorRect: () => count("setScissorRect"),
-    draw: () => count("draw"),
-    drawIndexed: () => count("drawIndexed"),
-    end: () => count("endRenderPass")
-});
+// Mirrors the validation a real implementation does at draw time. The mock used to accept anything,
+// which is how a strip pipeline missing its index format reached a real GPU before being noticed.
+const pass = () => {
+    let bound = null;
+    return obj("pass", {
+        setPipeline: (p) => { count("setPipeline"); bound = p; },
+        setBindGroup: (...a) => count(`setBindGroup(${a.length} args)`),
+        setVertexBuffer: () => count("setVertexBuffer"),
+        setIndexBuffer: () => count("setIndexBuffer"),
+        setViewport: () => count("setViewport"),
+        setScissorRect: () => count("setScissorRect"),
+        draw: () => count("draw"),
+        drawIndexed: () => {
+            count("drawIndexed");
+            if (!bound) { problems.push("drawIndexed with no pipeline bound"); return; }
+            if (bound.strip && !bound.stripIndexFormat) {
+                problems.push(`indexed draw on a ${bound.topology} pipeline with no stripIndexFormat`);
+            }
+        },
+        end: () => count("endRenderPass")
+    });
+};
 
 const mockDevice = {
     limits: { maxBindGroups: 4, maxTextureDimension2D: 8192, maxTextureDimension3D: 2048,
@@ -100,7 +111,16 @@ const mockDevice = {
     createBindGroupLayout: () => { count("createBindGroupLayout"); return obj("bgl"); },
     createPipelineLayout: () => { count("createPipelineLayout"); return obj("pl"); },
     createBindGroup: () => { count("createBindGroup"); return obj("bg"); },
-    createRenderPipeline: d => { count("createRenderPipeline"); checkPipeline(d); return obj("pipeline"); },
+    createRenderPipeline: d => {
+        count("createRenderPipeline");
+        checkPipeline(d);
+        const topology = d.primitive?.topology ?? "triangle-list";
+        return obj("pipeline", {
+            topology,
+            strip: topology.endsWith("-strip"),
+            stripIndexFormat: d.primitive?.stripIndexFormat ?? null
+        });
+    },
     createCommandEncoder: () => obj("encoder", {
         beginRenderPass: d => { count("beginRenderPass"); checkRenderPass(d); return pass(); },
         copyBufferToBuffer: () => count("copyBufferToBuffer"),
@@ -108,9 +128,20 @@ const mockDevice = {
     }),
     queue: {
         writeBuffer: (_b, offset) => { count("writeBuffer"); if (offset % 4) problems.push(`writeBuffer offset ${offset} not 4-aligned`); },
-        writeTexture: () => count("writeTexture"),
+        writeTexture: (destination, data, layout, size) => {
+            count("writeTexture");
+            const [width, height] = size;
+            if (!destination?.texture) problems.push("writeTexture with no destination texture");
+            if (layout.bytesPerRow < width * 4) {
+                problems.push(`writeTexture bytesPerRow ${layout.bytesPerRow} too small for width ${width}`);
+            }
+            if (data.length < layout.bytesPerRow * height) {
+                problems.push(`writeTexture data ${data.length} bytes short of ${layout.bytesPerRow * height}`);
+            }
+        },
         submit: () => count("submit"),
-        onSubmittedWorkDone: () => Promise.resolve()
+        // Deliberately slower than a frame: a queue that answers instantly hides the ring starving.
+        onSubmittedWorkDone: () => new Promise(r => setTimeout(r, 50))
     }
 };
 
@@ -133,6 +164,23 @@ const canvas = {
 
 const status = { textContent: "", classList: { add() {} } };
 
+// The host module decodes images through createImageBitmap and an OffscreenCanvas. Node has neither,
+// so these stand in with a fixed size and a recognisable pattern; the point is to exercise the
+// upload path, not to check the pixels.
+const STUB_IMAGE = 4;
+globalThis.createImageBitmap = async () => ({ width: STUB_IMAGE, height: STUB_IMAGE, close() {} });
+globalThis.OffscreenCanvas = class {
+    constructor(width, height) { this.width = width; this.height = height; }
+    getContext() {
+        return {
+            drawImage: () => {},
+            getImageData: (_x, _y, w, h) => ({
+                data: Uint8ClampedArray.from({ length: w * h * 4 }, (_, i) => i % 256)
+            })
+        };
+    }
+};
+
 globalThis.window = globalThis;
 globalThis.devicePixelRatio = 1;
 globalThis.addEventListener ??= () => {};
@@ -153,6 +201,12 @@ globalThis.requestAnimationFrame = (fn) => {
 
 // -- run ----------------------------------------------------------------------
 
+// A frame callback runs from a timer, so anything it throws is unhandled and would take the process
+// down before the report prints. Record it and let the run finish reporting instead.
+let frameFailure = null;
+process.on("uncaughtException", (e) => { frameFailure ??= e?.message ?? String(e); });
+process.on("unhandledRejection", (e) => { frameFailure ??= e?.message ?? String(e); });
+
 const { dotnet } = await import(`file://${join(bundle, "_framework", "dotnet.js")}`);
 const { runMain } = await dotnet.withDiagnosticTracing(false).create();
 
@@ -164,6 +218,8 @@ try {
 } catch (e) {
     failure = e?.message ?? String(e);
 }
+
+failure ??= frameFailure;
 
 server.close();
 

@@ -247,7 +247,12 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
 
     // -- draw ---------------------------------------------------------------
 
-    private void PrepareDraw()
+    /// <summary>True for the topologies whose primitives chain, which WebGPU treats specially.</summary>
+    private static bool IsStrip(PrimitiveTopology topology)
+        => topology is PrimitiveTopology.TriangleStrip or PrimitiveTopology.LineStrip;
+
+
+    private void PrepareDraw(IndexFormat? indexFormat)
     {
         if (_shaderProgram is not WgpuGraphicsProgram program)
             throw new RenderException("A draw needs a graphics program; call SetShader first.");
@@ -260,7 +265,11 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
         EnsurePass();
 
         OutputDescription outputs = _framebuffer!.OutputDescription;
-        int pipeline = program.GetPipeline(outputs, _topology);
+
+        // Only a strip carries its index format into the pipeline; a list must leave it unset.
+        IndexFormat? stripIndexFormat = IsStrip(_topology) ? indexFormat : null;
+
+        int pipeline = program.GetPipeline(outputs, _topology, stripIndexFormat);
 
         if (pipeline != _boundPipeline)
         {
@@ -426,17 +435,22 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
 
     private protected override void DrawCore(uint vertexCount, uint instanceCount, uint vertexStart, uint instanceStart)
     {
-        PrepareDraw();
+        PrepareDraw(indexFormat: null);
         WgpuInterop.Draw(_pass, (int)vertexCount, (int)instanceCount, (int)vertexStart, (int)instanceStart);
     }
 
 
     private protected override void DrawIndexedCore(uint instanceCount, uint indexStart, int vertexOffset, uint instanceStart)
     {
-        PrepareDraw();
+        // The index buffer is resolved first because a strip pipeline bakes in its index format, so
+        // the format has to be known before the pipeline is chosen.
+        if (_currentVertexSource is null)
+            throw new RenderException("A draw needs a vertex source; call SetVertexSource first.");
 
-        if (!_currentVertexSource!.TryGetIndexBuffer(out DeviceBuffer indexBuffer, out IndexFormat format, out uint indexCount))
+        if (!_currentVertexSource.TryGetIndexBuffer(out DeviceBuffer indexBuffer, out IndexFormat format, out uint indexCount))
             throw new RenderException("An indexed draw needs an index buffer on the bound vertex source.");
+
+        PrepareDraw(format);
 
         WgpuBuffer buffer = (WgpuBuffer)indexBuffer;
         buffer.MarkInFlight(_device, ExecutionId);

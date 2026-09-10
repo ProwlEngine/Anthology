@@ -65,9 +65,16 @@ internal sealed partial class WgpuGraphicsDevice
 
     private protected override bool WaitForExecutionCore(ExecutionTask task, ulong nanosecondTimeout)
     {
-        // Cannot block, so this reports rather than waits. The ring reclaims the slot either way,
-        // which is safe because WebGPU will not let us overwrite memory it is still reading.
         PumpErrors();
+
+        // The ring calls this when every slot is busy and then expects to reclaim one. Returning true
+        // without signalling left the fence unset, nothing was reclaimed, and the next Dequeue threw
+        // on an empty queue as soon as the GPU fell behind the display.
+        //
+        // Since blocking is impossible here and WebGPU will not let a queue write land on memory it
+        // is still reading, the honest answer is to let the slot go: the completion promise will
+        // arrive on its own, and the fence is already signalled by the time it does.
+        ((WgpuExecutionTask)task).SignalCompletion();
         return true;
     }
 

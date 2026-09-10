@@ -83,33 +83,44 @@ internal sealed class WgpuGraphicsProgram : GraphicsProgram
     {
         private readonly OutputDescription _outputs;
         private readonly PrimitiveTopology _topology;
+        private readonly IndexFormat? _stripIndexFormat;
 
-        public PipelineKey(in OutputDescription outputs, PrimitiveTopology topology)
+        public PipelineKey(in OutputDescription outputs, PrimitiveTopology topology, IndexFormat? stripIndexFormat)
         {
             _outputs = outputs;
             _topology = topology;
+            _stripIndexFormat = stripIndexFormat;
         }
 
         public bool Equals(PipelineKey other)
-            => _topology == other._topology && _outputs.Equals(other._outputs);
+            => _topology == other._topology
+               && _stripIndexFormat == other._stripIndexFormat
+               && _outputs.Equals(other._outputs);
 
         public override bool Equals(object? obj) => obj is PipelineKey other && Equals(other);
 
-        public override int GetHashCode() => HashCode.Combine(_outputs, (int)_topology);
+        public override int GetHashCode()
+            => HashCode.Combine(_outputs, (int)_topology, _stripIndexFormat);
     }
 
 
     /// <summary>
-    /// The pipeline for these output formats and topology, built on first use.
+    /// The pipeline for these output formats, topology and index format, built on first use.
     /// </summary>
-    public int GetPipeline(in OutputDescription outputs, PrimitiveTopology topology)
+    /// <param name="outputs">Formats the pipeline writes to.</param>
+    /// <param name="topology">Primitive topology to assemble.</param>
+    /// <param name="stripIndexFormat">
+    /// Index format for an indexed draw with a strip topology, which WebGPU bakes into the pipeline
+    /// so it knows the primitive-restart value. Null for anything else.
+    /// </param>
+    public int GetPipeline(in OutputDescription outputs, PrimitiveTopology topology, IndexFormat? stripIndexFormat)
     {
-        PipelineKey key = new(outputs, topology);
+        PipelineKey key = new(outputs, topology, stripIndexFormat);
 
         if (_pipelines.TryGetValue(key, out int existing))
             return existing;
 
-        int pipeline = WgpuInterop.CreateRenderPipeline(BuildPipelineDescriptor(outputs, topology));
+        int pipeline = WgpuInterop.CreateRenderPipeline(BuildPipelineDescriptor(outputs, topology, stripIndexFormat));
 
         if (pipeline == WgpuInterop.NullHandle)
             throw new RenderException($"Failed to create a WebGPU render pipeline for '{Name}': {WgpuInterop.TakeError()}");
@@ -119,7 +130,8 @@ internal sealed class WgpuGraphicsProgram : GraphicsProgram
     }
 
 
-    private string BuildPipelineDescriptor(in OutputDescription outputs, PrimitiveTopology topology)
+    private string BuildPipelineDescriptor(
+        in OutputDescription outputs, PrimitiveTopology topology, IndexFormat? stripIndexFormat)
     {
         return WgpuDescriptors.RenderPipeline(
             _pipelineLayout,
@@ -128,6 +140,7 @@ internal sealed class WgpuGraphicsProgram : GraphicsProgram
             VertexLayoutsArray,
             outputs,
             topology,
+            stripIndexFormat,
             in BlendStateRef,
             in DepthStencilStateRef,
             in RasterizerStateRef,

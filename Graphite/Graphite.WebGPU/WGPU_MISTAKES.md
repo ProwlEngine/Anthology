@@ -57,7 +57,26 @@ wrong, but it will make the first debugging session harder than it needs to be.
 
 ## Already fixed, and how they were missed
 
-### Found by running a sample
+### Found by running on a real GPU
+
+Both of these passed the mock and failed on hardware, which is why the mock now models them. Each was
+confirmed by reverting the fix and watching `Samples/Web/run-node.mjs` fail with the same complaint.
+
+**A strip topology drawn indexed had no index format.** WebGPU bakes the index width into the
+pipeline for a strip, because the primitive-restart value depends on it, and rejects the draw
+without it. `ModelLoader.CreateTriangle` builds a triangle strip, so HelloTriangle hit this on its
+very first frame: every submission was rejected and nothing appeared. This was written down as a
+known gap when the pipeline key was fixed, with the note that it "only matters once something draws
+strips". Something already did.
+
+**The execution ring ran out of slots.** `WaitForExecutionCore` cannot block, so it returned true
+without doing anything. The ring calls it when every slot is busy and then expects to reclaim one,
+but the fence was never signalled, nothing was reclaimed, and the next `Dequeue` threw
+`InvalidOperation_EmptyQueue`. The mock hid it by resolving `onSubmittedWorkDone` synchronously, so
+fences always signalled before the next frame; a real queue does not. The wait now signals the task
+it was asked to wait for, and the mock resolves completion on a delay longer than a frame.
+
+### Found by running against a mock
 
 **Every frame opened an empty render pass.** The render graph sets a viewport before the sample
 clears, and setting a viewport had to open a pass because WebGPU has no way to set one outside of

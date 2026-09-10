@@ -329,6 +329,7 @@ internal static class WgpuDescriptors
         VertexLayoutDescription[] vertexLayouts,
         in OutputDescription outputs,
         PrimitiveTopology topology,
+        IndexFormat? stripIndexFormat,
         in BlendStateDescription blend,
         in DepthStencilStateDescription depthStencil,
         in RasterizerStateDescription rasterizer,
@@ -341,6 +342,7 @@ internal static class WgpuDescriptors
         OutputAttachmentDescription[] colorTargets = outputs.ColorAttachments ?? [];
         PixelFormat? depthFormat = outputs.DepthAttachment?.Format;
         string topologyName = WgpuFormats.Topology(topology);
+        string? stripFormat = stripIndexFormat.HasValue ? WgpuFormats.IndexFormat(stripIndexFormat.Value) : null;
         int sampleCount = (int)outputs.SampleCount switch { 0 => 1, int s => 1 << s };
 
         return Write(w =>
@@ -420,6 +422,12 @@ internal static class WgpuDescriptors
             w.WriteString("topology", topologyName);
             w.WriteString("frontFace", WgpuFormats.FrontFace(rasterCopy.FrontFace));
             w.WriteString("cullMode", WgpuFormats.CullMode(rasterCopy.CullMode));
+
+            // A strip topology drawn indexed needs its index format here, because the primitive
+            // restart value depends on the index width. WebGPU rejects the draw without it.
+            if (stripFormat != null)
+                w.WriteString("stripIndexFormat", stripFormat);
+
             w.WriteEndObject();
 
             if (depthFormat.HasValue)
