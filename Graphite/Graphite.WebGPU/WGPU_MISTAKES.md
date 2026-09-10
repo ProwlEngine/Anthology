@@ -1,39 +1,19 @@
 # Known defects in the WebGPU backend
 
-The backend compiles and has never executed. This is the list of things believed wrong, written down
-while they were fresh rather than discovered later by a confusing frame.
+The backend now runs. `Samples/Web/run-node.mjs` drives a sample against a mock WebGPU under Node,
+which is what turned several of the entries below from suspicion into measurement.
 
 Nothing here is speculative about *what the code does* — each entry names the line and what it will
 do. What is uncertain is only whether some of them matter in practice, and that is marked.
 
-Six defects found in the same review are already fixed and are listed at the bottom, because the way
-some of them were missed is worth remembering.
+Nine defects are already fixed and listed at the bottom, because the way some of them were missed is
+worth remembering.
 
 ---
 
 ## Will leak or misbehave over time
 
-### 1. Uniform arenas are never freed
-
-`WgpuGraphicsDevice.Execution.cs:21` holds one arena per ring slot, each owning a growing list of
-buffers. `WgpuGraphicsDevice.cs:247` disposes the swapchain and pending releases but never the
-arenas, so every buffer they allocated outlives the device.
-
-`WgpuUniformArena.Dispose` exists and nothing calls it.
-
-### 2. Bind groups are cached per command buffer
-
-`WgpuCommandBuffer.cs:51` gives every command buffer its own `WgpuBindGroupCache`. Two problems.
-
-The cache is thrown away with the buffer, so a pooled or per-frame command buffer rebuilds every bind
-group it ever used. The point of caching them was to avoid exactly that.
-
-Worse, the cache keys on resource *handles*, and handles are recycled by the shim's free list. A
-disposed texture's handle can be reissued to a new texture, and a stale cache entry would then bind
-the wrong resource rather than fail. The cache belongs on the device, keyed on something that
-survives, and it has to be invalidated when a resource is disposed.
-
-### 3. Orphaning destroys a buffer that may still be in use
+### 1. Orphaning destroys a buffer that may still be in use
 
 `WgpuResources.cs:56` creates the replacement buffer, then calls `WgpuInterop.Release` on the old
 handle. The shim's `release` calls `destroy()`, which is immediate.
@@ -48,18 +28,7 @@ but that has not been confirmed against an implementation. The conservative fix 
 
 ## Ordering hazards
 
-### 4. Setting a viewport or scissor opens the render pass
-
-`WgpuCommandBuffer.cs:204` and `:213` both call `EnsurePass()`, because WebGPU has no way to set
-either outside a pass. But opening the pass is what consumes the queued clears.
-
-So a caller that sets a viewport before clearing gets a pass opened with no clear, and the clear that
-follows then has to close that pass and open another. The frame still renders, but the first pass is
-wasted and any drawing in it is discarded.
-
-The Vulkan backend does not have this problem because it can clear inside a pass.
-
-### 5. The swapchain frame is acquired through `MainSwapchain`
+### 2. The swapchain frame is acquired through `MainSwapchain`
 
 `WgpuCommandBuffer.cs:162` reaches for `_device.MainSwapchain` when it sees a swapchain framebuffer,
 rather than asking the framebuffer which swapchain it belongs to. With one swapchain, which is every
@@ -69,7 +38,7 @@ current sample, this is correct. With two it acquires a frame from the wrong one
 
 ## Unverified, lower confidence
 
-### 6. Uniform payloads larger than 128 bytes over-read
+### 3. Uniform payloads larger than 128 bytes over-read
 
 `WgpuCommandBuffer.cs:387` copies `field.Size` bytes out of `PropertyEntry.Uniform`, which is a fixed
 128-byte inline buffer. Every scalar type Graphite can write fits — a `double4x4` is exactly 128 — so
@@ -78,7 +47,7 @@ this is safe for anything `PropertySet` can produce today.
 It is listed because the copy trusts a reflected size against a fixed-size source with no bound
 check, which is the kind of thing that stops being safe quietly.
 
-### 7. Validation errors surface late
+### 4. Validation errors surface late
 
 `PumpErrors` runs on submit and on swap. WebGPU reports validation failures asynchronously, so an
 error caused by a resource creation call is attributed to whatever frame happened to drain it. Not
@@ -88,7 +57,25 @@ wrong, but it will make the first debugging session harder than it needs to be.
 
 ## Already fixed, and how they were missed
 
-These six came out of the same review and are corrected in the tree.
+### Found by running a sample
+
+**Every frame opened an empty render pass.** The render graph sets a viewport before the sample
+clears, and setting a viewport had to open a pass because WebGPU has no way to set one outside of
+one. Opening it consumed the queued clears, so the clear that followed had to close that pass and
+open another. Output was correct and one pass per frame was wasted. Viewport and scissor are now
+held and applied when a pass opens.
+
+**Every frame rebuilt its bind groups.** The cache lived on the command buffer, and the graph rents a
+new buffer each frame, so the cache was thrown away as fast as it was filled. It now lives on the
+device. Because the shim reuses handle slots, releasing any handle drops the cache, which is blunt
+but correct: releases are rare and draws are not.
+
+**Uniform arenas were never freed.** One arena per ring slot, each holding a growing list of buffers,
+and device disposal never touched them. `WgpuUniformArena.Dispose` existed and nothing called it.
+
+### Found by reading
+
+These six came out of a review of code that had not yet run.
 
 **The pipeline cache ignored topology.** `GetPipeline` took a topology and then keyed the cache on
 `OutputDescription` alone, so a program drawn first as a triangle list and then as a strip got the

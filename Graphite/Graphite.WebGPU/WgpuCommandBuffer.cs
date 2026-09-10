@@ -38,6 +38,12 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
     private PrimitiveTopology _topology = PrimitiveTopology.TriangleList;
     private int _boundPipeline;
 
+    // Viewport and scissor are pass state in WebGPU, so they are held until a pass opens rather than
+    // opening one. Setting them eagerly would consume the queued clears and strand them in a pass
+    // with nothing drawn in it.
+    private Viewport? _pendingViewport;
+    private (uint X, uint Y, uint Width, uint Height)? _pendingScissor;
+
     // Scratch reused every draw so binding allocates nothing per call.
     private readonly List<WgpuDescriptors.BindEntry> _entryScratch = [];
     private readonly List<int> _dynamicOffsets = [];
@@ -48,7 +54,7 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
         : base(features, device.UniformBufferMinOffsetAlignment, device.StructuredBufferMinOffsetAlignment)
     {
         _device = device;
-        _bindGroups = new WgpuBindGroupCache(device);
+        _bindGroups = device.BindGroups;
     }
 
 
@@ -67,6 +73,8 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
         _boundPipeline = WgpuInterop.NullHandle;
         _queuedColorClears.Clear();
         _queuedDepthClear = null;
+        _pendingViewport = null;
+        _pendingScissor = null;
         HasEnded = false;
     }
 
@@ -148,6 +156,21 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
         _queuedColorClears.Clear();
         _queuedDepthClear = null;
         _boundPipeline = WgpuInterop.NullHandle;
+
+        ApplyPendingPassState();
+    }
+
+
+    private void ApplyPendingPassState()
+    {
+        if (_pendingViewport is Viewport viewport)
+        {
+            WgpuInterop.SetViewport(_pass, viewport.X, viewport.Y, viewport.Width, viewport.Height,
+                viewport.MinDepth, viewport.MaxDepth);
+        }
+
+        if (_pendingScissor is { } scissor)
+            WgpuInterop.SetScissorRect(_pass, (int)scissor.X, (int)scissor.Y, (int)scissor.Width, (int)scissor.Height);
     }
 
 
@@ -201,17 +224,24 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
     /// <inheritdoc/>
     public override void SetViewport(uint index, ref Viewport viewport)
     {
-        EnsurePass();
-        WgpuInterop.SetViewport(_pass, viewport.X, viewport.Y, viewport.Width, viewport.Height,
-            viewport.MinDepth, viewport.MaxDepth);
+        _pendingViewport = viewport;
+
+        // Already inside a pass: apply now as well, since a later pass begin would only replay it.
+        if (_pass != WgpuInterop.NullHandle)
+        {
+            WgpuInterop.SetViewport(_pass, viewport.X, viewport.Y, viewport.Width, viewport.Height,
+                viewport.MinDepth, viewport.MaxDepth);
+        }
     }
 
 
     /// <inheritdoc/>
     public override void SetScissorRect(uint index, uint x, uint y, uint width, uint height)
     {
-        EnsurePass();
-        WgpuInterop.SetScissorRect(_pass, (int)x, (int)y, (int)width, (int)height);
+        _pendingScissor = (x, y, width, height);
+
+        if (_pass != WgpuInterop.NullHandle)
+            WgpuInterop.SetScissorRect(_pass, (int)x, (int)y, (int)width, (int)height);
     }
 
 
@@ -489,7 +519,6 @@ internal sealed unsafe class WgpuCommandBuffer : CommandBuffer
     private protected override void DisposeCore()
     {
         EndPass();
-        _bindGroups.Clear();
 
         if (_encoder != WgpuInterop.NullHandle)
         {

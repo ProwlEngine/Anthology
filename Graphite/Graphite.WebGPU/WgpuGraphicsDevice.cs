@@ -32,6 +32,10 @@ internal sealed partial class WgpuGraphicsDevice : GraphicsDevice
     // deferring one execution keeps the ownership story the same as the Vulkan backend's.
     private readonly List<(ulong ExecutionId, int Handle)> _pendingReleases = [];
 
+    // Device-wide, so a bind group survives the command buffer that first built it. Per-buffer it
+    // was rebuilt every frame, which is the opposite of what caching it was for.
+    private readonly WgpuBindGroupCache _bindGroups;
+
 
     internal WgpuGraphicsDevice(
         GraphicsDeviceOptions options,
@@ -68,6 +72,7 @@ internal sealed partial class WgpuGraphicsDevice : GraphicsDevice
 
         InitializeFrameOptions(options);
 
+        _bindGroups = new WgpuBindGroupCache(this);
         _factory = new WgpuResourceFactory(this, _features);
 
         if (swapchainDescription.HasValue)
@@ -82,6 +87,9 @@ internal sealed partial class WgpuGraphicsDevice : GraphicsDevice
 
     /// <summary>Device limits, read once at creation.</summary>
     public WgpuLimits Limits => _limits;
+
+    /// <summary>The shared bind group cache every command buffer binds through.</summary>
+    public WgpuBindGroupCache BindGroups => _bindGroups;
 
     /// <inheritdoc/>
     public override string DeviceName => _deviceName;
@@ -144,6 +152,11 @@ internal sealed partial class WgpuGraphicsDevice : GraphicsDevice
             return;
 
         _pendingReleases.Add((_executionIdCounter, handle));
+
+        // The shim reuses handle slots, so a released handle can come back attached to a different
+        // resource. Any cached bind group naming it would then bind the wrong thing rather than
+        // fail, so the cache is dropped. Releases are rare; draws are not.
+        _bindGroups.Clear();
     }
 
 
@@ -247,6 +260,8 @@ internal sealed partial class WgpuGraphicsDevice : GraphicsDevice
     protected override void PlatformDispose()
     {
         _mainSwapchain?.Dispose();
+        _bindGroups.Clear();
+        DisposeArenas();
 
         foreach ((_, int handle) in _pendingReleases)
             WgpuInterop.Release(handle);

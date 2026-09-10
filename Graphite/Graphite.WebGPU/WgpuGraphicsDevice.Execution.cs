@@ -21,6 +21,16 @@ internal sealed partial class WgpuGraphicsDevice
     private readonly Dictionary<uint, WgpuUniformArena> _arenas = [];
 
 
+    /// <summary>Frees every ring slot's transient buffers. Called when the device shuts down.</summary>
+    private void DisposeArenas()
+    {
+        foreach (WgpuUniformArena arena in _arenas.Values)
+            arena.Dispose();
+
+        _arenas.Clear();
+    }
+
+
     private protected override ExecutionTask BeginExecutionCore(ulong executionId, uint ringSlot)
     {
         if (!_arenas.TryGetValue(ringSlot, out WgpuUniformArena? arena))

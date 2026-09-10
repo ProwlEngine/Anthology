@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-browser</TargetFramework>
+        <OutputType>Library</OutputType>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>Prowl.Graphite.Samples.Web</AssemblyName>
+        <RootNamespace>Prowl.Graphite.Samples.Web</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\Graphite.WebGPU\Prowl.Graphite.WebGPU.csproj" />
+        <ProjectReference Include="..\..\..\ShaderDef\Core\Prowl.Graphite.ShaderDef.csproj" />
+    </ItemGroup>
+
+    <!-- Linked rather than copied: these are the desktop samples' own files, unchanged, and the
+         point of the ports is that the same code runs. Samples/Shared itself cannot be referenced
+         because it pulls in SDL windowing and Magick.NET, neither of which exists in a browser. -->
+    <ItemGroup>
+        <Compile Include="..\..\Shared\Mesh.cs" Link="Shared\Mesh.cs" />
+        <Compile Include="..\..\Shared\ModelLoader.cs" Link="Shared\ModelLoader.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="wwwroot\graphite-host.js" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+</Project>

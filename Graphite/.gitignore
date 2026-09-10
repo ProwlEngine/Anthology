@@ -403,3 +403,5 @@ FodyWeavers.xsd
 Graphite.WebGPU/Harness/.serve/
 Graphite.WebGPU/Harness/InteropProof/bin/
 Graphite.WebGPU/Harness/InteropProof/obj/
+Samples/Web/*/bin/
+Samples/Web/*/obj/
