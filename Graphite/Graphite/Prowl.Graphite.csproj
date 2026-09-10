@@ -41,5 +41,8 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="Prowl.Graphite.Tests" />
+        <!-- The backend contract is expressed with internal and private protected members, so a
+             backend in its own assembly needs friend access to implement it at all. -->
+        <InternalsVisibleTo Include="Prowl.Graphite.WebGPU" />
     </ItemGroup>
 </Project>
