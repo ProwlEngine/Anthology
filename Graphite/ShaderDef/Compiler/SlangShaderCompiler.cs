@@ -312,7 +312,7 @@ public sealed class SlangShaderCompiler : IShaderCompiler
 
 
     private static bool IsBackendTopLeft(GraphicsBackend backend)
-        => backend is GraphicsBackend.Vulkan;
+        => backend is GraphicsBackend.Vulkan or GraphicsBackend.WebGPU;
 
 
     private void ResetSessionState()
