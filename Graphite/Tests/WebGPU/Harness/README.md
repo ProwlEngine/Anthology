@@ -8,7 +8,7 @@ Three ways to exercise the interop boundary, in increasing order of how much is 
 node shim.test.mjs
 ```
 
-Runs `Interop/graphite-webgpu.js` against a mock WebGPU under plain Node. Covers the bookkeeping a
+Runs `Graphite/Platform/WebGPU/Interop/graphite-webgpu.js` against a mock WebGPU under plain Node. Covers the bookkeeping a
 browser cannot conveniently assert: handle allocation and reuse, what `release` destroys, and the
 handle-to-object substitution inside every JSON descriptor. Needs nothing but Node.
 

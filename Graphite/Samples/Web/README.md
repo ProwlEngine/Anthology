@@ -39,3 +39,5 @@ moves, and only where the browser forces it:
 `Mesh` and `ModelLoader` are linked straight out of `Samples/Shared` with no changes at all.
 
 Requires the `wasm-tools` workload (`sudo dotnet workload install wasm-tools`).
+
+Known backend defects are tracked in `Graphite/Platform/WebGPU/WGPU_MISTAKES.md`.

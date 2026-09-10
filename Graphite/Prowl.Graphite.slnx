@@ -3,10 +3,10 @@
         <Project Path="Tests/Graphite/Prowl.Graphite.Tests.csproj" />
         <Project Path="Tests/ShaderDef/Prowl.Graphite.ShaderDef.Tests.csproj" />
         <Project Path="Tests/ShaderDef.Compiler/Prowl.Graphite.ShaderDef.Compiler.Tests.csproj" />
+        <Project Path="Tests/WebGPU/Harness/InteropProof/InteropProof.csproj" />
     </Folder>
     <Folder Name="/Graphite/">
         <Project Path="Graphite/Prowl.Graphite.csproj" />
-        <Project Path="Graphite.WebGPU/Prowl.Graphite.WebGPU.csproj" />
     </Folder>
     <Folder Name="/ShaderDef/">
         <Project Path="ShaderDef/Core/Prowl.Graphite.ShaderDef.csproj" />

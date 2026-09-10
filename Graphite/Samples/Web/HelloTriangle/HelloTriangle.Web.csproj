@@ -20,7 +20,7 @@
     <ItemGroup>
         <WasmExtraFilesToDeploy Include="wwwroot\index.html" />
         <WasmExtraFilesToDeploy Include="..\Shared.Web\wwwroot\graphite-host.js" />
-        <WasmExtraFilesToDeploy Include="..\..\..\Graphite.WebGPU\Interop\graphite-webgpu.js" />
+        <WasmExtraFilesToDeploy Include="..\..\..\Graphite\Platform\WebGPU\Interop\graphite-webgpu.js" />
     </ItemGroup>
 
     <!-- Slang cannot run in WebAssembly, so the sample's shader is compiled to WGSL here and shipped

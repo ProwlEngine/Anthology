@@ -10,16 +10,20 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <IsPackable>false</IsPackable>
         <WasmMainJSPath>wwwroot/main.js</WasmMainJSPath>
+        <!-- Tests/Directory.Build.props brings in the test SDK, which generates its own entry point
+             and would replace this app's Main. This is a browser app, not an xunit project. -->
+        <IsTestProject>false</IsTestProject>
+        <GenerateProgramFile>false</GenerateProgramFile>
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\Prowl.Graphite.WebGPU.csproj" />
-        <ProjectReference Include="..\..\..\ShaderDef\Core\Prowl.Graphite.ShaderDef.csproj" />
+        <ProjectReference Include="..\..\..\..\Graphite\Prowl.Graphite.csproj" />
+        <ProjectReference Include="..\..\..\..\ShaderDef\Core\Prowl.Graphite.ShaderDef.csproj" />
     </ItemGroup>
 
     <!-- The shim is served beside the app rather than embedded, so the browser loads it as a module. -->
     <ItemGroup>
-        <WasmExtraFilesToDeploy Include="..\..\Interop\graphite-webgpu.js" />
+        <WasmExtraFilesToDeploy Include="..\..\..\..\Graphite\Platform\WebGPU\Interop\graphite-webgpu.js" />
         <WasmExtraFilesToDeploy Include="wwwroot\index.html" />
         <WasmExtraFilesToDeploy Include="wwwroot\proof.js" />
     </ItemGroup>
@@ -30,7 +34,7 @@
         <PropertyGroup>
             <ShaderOutDir>$(IntermediateOutputPath)shaders</ShaderOutDir>
         </PropertyGroup>
-        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)../../../Tools/ShaderPrecompile/ShaderPrecompile.csproj&quot; -- --out &quot;$(ShaderOutDir)&quot; &quot;$(MSBuildThisFileDirectory)../../../Samples/HelloTriangle/Shader.slang&quot;" />
+        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)../../../../Tools/ShaderPrecompile/ShaderPrecompile.csproj&quot; -- --out &quot;$(ShaderOutDir)&quot; &quot;$(MSBuildThisFileDirectory)../../../../Samples/HelloTriangle/Shader.slang&quot;" />
 
         <!-- Added inside the target: the files do not exist when item globs are first evaluated. -->
         <ItemGroup>

@@ -19,7 +19,7 @@
     <ItemGroup>
         <WasmExtraFilesToDeploy Include="wwwroot\index.html" />
         <WasmExtraFilesToDeploy Include="..\Shared.Web\wwwroot\graphite-host.js" />
-        <WasmExtraFilesToDeploy Include="..\..\..\Graphite.WebGPU\Interop\graphite-webgpu.js" />
+        <WasmExtraFilesToDeploy Include="..\..\..\Graphite\Platform\WebGPU\Interop\graphite-webgpu.js" />
         <!-- The images are the desktop sample's own, fetched over HTTP and decoded by the browser. -->
         <WasmExtraFilesToDeploy Include="..\..\TexturedQuad\Cat_cat.png" />
         <WasmExtraFilesToDeploy Include="..\..\TexturedQuad\Cat_cat2.png" />

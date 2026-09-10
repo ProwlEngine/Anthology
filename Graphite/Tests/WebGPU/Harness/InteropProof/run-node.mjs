@@ -5,8 +5,8 @@
 // catches things a compile cannot -- reflection-free JSON, Span-to-MemoryView byte layout, whether an
 // empty Span<int> really omits the dynamic offsets argument.
 //
-//   dotnet build Graphite.WebGPU/Harness/InteropProof/InteropProof.csproj
-//   node Graphite.WebGPU/Harness/InteropProof/run-node.mjs
+//   dotnet build Tests/WebGPU/Harness/InteropProof/InteropProof.csproj
+//   node Tests/WebGPU/Harness/InteropProof/run-node.mjs
 //
 // For the real thing on a real GPU, serve the same AppBundle and open index.html in a browser.
 import { createServer } from "node:http";
@@ -101,6 +101,11 @@ globalThis.document = {
 
 // -- run ------------------------------------------------------------------------------------------
 
+// Anything thrown outside the awaited call would otherwise vanish and leave an empty report.
+let asyncFailure = null;
+process.on("uncaughtException", (e) => { asyncFailure ??= e?.message ?? String(e); });
+process.on("unhandledRejection", (e) => { asyncFailure ??= e?.message ?? String(e); });
+
 const { dotnet } = await import(`file://${join(bundle, "_framework", "dotnet.js")}`);
 const { runMain } = await dotnet.withDiagnosticTracing(false).create();
 await runMain();
@@ -111,6 +116,8 @@ console.log("\n--- WebGPU calls observed from C# ---");
 for (const [name, detail] of seen) {
     console.log("  " + name + (detail === undefined ? "" : " " + JSON.stringify(detail).slice(0, 150)));
 }
+
+if (asyncFailure) console.log("\n--- unhandled ---\n  " + asyncFailure);
 
 const proof = globalThis.__proof;
 console.log("\n--- result ---");

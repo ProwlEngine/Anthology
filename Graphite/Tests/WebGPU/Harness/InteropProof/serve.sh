@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the interop proof app and serves it, so the C# triangle can be seen on a real GPU.
 #
-#   ./Graphite.WebGPU/Harness/InteropProof/serve.sh [port]
+#   ./Tests/WebGPU/Harness/InteropProof/serve.sh [port]
 #
 # Then open the printed URL in a browser with WebGPU.
 set -euo pipefail

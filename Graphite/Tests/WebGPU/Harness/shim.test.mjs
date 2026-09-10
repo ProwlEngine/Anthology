@@ -4,7 +4,7 @@
 // device: the handle table, what release destroys and reuses, and the handle-to-object substitution
 // inside every JSON descriptor. Anything needing a real adapter belongs in the browser harness.
 //
-//   node Graphite.WebGPU/Harness/shim.test.mjs
+//   node Tests/WebGPU/Harness/shim.test.mjs
 const calls = [];
 const rec = (name, args) => calls.push([name, args]);
 const obj = (kind, extra = {}) => ({ __kind: kind, ...extra });
@@ -51,7 +51,7 @@ const canvas = { width: 0, height: 0, getContext: () => ({ configure: c => rec("
 globalThis.document = { querySelector: s => (s === "#graphite-canvas" ? canvas : null) };
 
 const shimPath = process.argv[2]
-  ?? new URL("../Interop/graphite-webgpu.js", import.meta.url).pathname;
+  ?? new URL("../../../Graphite/Platform/WebGPU/Interop/graphite-webgpu.js", import.meta.url).pathname;
 const w = await import("file://" + shimPath);
 
 let failures = 0;
