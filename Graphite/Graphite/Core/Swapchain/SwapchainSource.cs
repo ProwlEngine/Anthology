@@ -1,5 +1,6 @@
-﻿using Silk.NET.Core.Contexts;
-using Silk.NET.Vulkan;
+﻿#if !EXCLUDE_VULKAN_BACKEND
+using Silk.NET.Core.Contexts;
+#endif
 
 namespace Prowl.Graphite;
 
@@ -10,27 +11,20 @@ public abstract class SwapchainSource
 {
     internal SwapchainSource() { }
 
+#if !EXCLUDE_VULKAN_BACKEND
     /// <summary>
     /// Create Vulkan swapchain source from Silk.NET surface.
     /// </summary>
     public static SwapchainSource CreateVulkan(IVkSurface surface)
         => new VkSurfaceSwapchainSource(surface);
-}
+#endif
 
-
-internal class VkSurfaceSwapchainSource : SwapchainSource
-{
-    public IVkSurface VkSurface { get; }
-
-
-    public VkSurfaceSwapchainSource(IVkSurface surface)
-    {
-        VkSurface = surface;
-    }
-
-
-    internal unsafe SurfaceKHR GetSurface(Instance instance)
-    {
-        return VkSurface.Create<AllocationCallbacks>(instance.ToHandle(), null).ToSurface();
-    }
+#if !EXCLUDE_WEBGPU_BACKEND
+    /// <summary>
+    /// Create WebGPU swapchain source from an HTML canvas element.
+    /// </summary>
+    /// <param name="canvasSelector">CSS selector for the canvas, for example "#graphite-canvas".</param>
+    public static SwapchainSource CreateCanvas(string canvasSelector)
+        => new WgpuCanvasSwapchainSource(canvasSelector);
+#endif
 }

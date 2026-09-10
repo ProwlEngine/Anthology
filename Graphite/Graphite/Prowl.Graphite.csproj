@@ -14,7 +14,17 @@
 
     <PropertyGroup>
         <DefineConstants Condition="'$(ExcludeVulkan)' == 'true'">$(DefineConstants);EXCLUDE_VULKAN_BACKEND</DefineConstants>
+        <DefineConstants Condition="'$(ExcludeWebGPU)' == 'true'">$(DefineConstants);EXCLUDE_WEBGPU_BACKEND</DefineConstants>
     </PropertyGroup>
+
+    <!-- An excluded backend drops out of the compile entirely. The defines above only guard the few
+         places in Core that name a backend; the platform folders themselves are removed here so they
+         never need per-file #if walls. Backend code lives under three parallel roots (the backend
+         proper, plus its Profiling and ValidationLayers extensions), so the glob is rooted loosely. -->
+    <ItemGroup>
+        <Compile Remove="**/Platform/Vulkan/**/*.cs" Condition="'$(ExcludeVulkan)' == 'true'" />
+        <Compile Remove="**/Platform/WebGPU/**/*.cs" Condition="'$(ExcludeWebGPU)' == 'true'" />
+    </ItemGroup>
 
     <ItemGroup>
         <!-- Silk.NET Vulkan -->
