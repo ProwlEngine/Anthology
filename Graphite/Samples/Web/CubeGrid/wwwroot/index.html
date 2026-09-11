@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Graphite CubeGrid</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#14181b; color:#dfe6e9; font:14px/1.5 system-ui, sans-serif; margin:0;
+         padding:24px; display:flex; flex-direction:column; gap:12px; align-items:flex-start; }
+  h1 { font-size:16px; font-weight:600; margin:0; }
+  canvas { width:600px; height:600px; max-width:100%; aspect-ratio:1; border:1px solid #2b3439;
+           display:block; background:#0d1113; }
+  #status { font-family:ui-monospace, Menlo, monospace; font-size:12px; color:#8b9aa3; }
+  #status.error { color:#f08a70; }
+</style>
+</head>
+<body>
+  <h1>Graphite CubeGrid, on WebGPU</h1>
+  <canvas id="graphite-canvas"></canvas>
+  <div id="status">Starting .NET...</div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

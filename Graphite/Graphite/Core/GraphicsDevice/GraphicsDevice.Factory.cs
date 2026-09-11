@@ -17,6 +17,10 @@ public abstract partial class GraphicsDevice
 #else
                 return false;
 #endif
+            case GraphicsBackend.WebGPU:
+                // No WebGPU device exists yet; the enum member and its swapchain source landed first so
+                // the rest of the library can be built and tested with Vulkan excluded.
+                return false;
             default:
                 throw Illegal.Value<GraphicsBackend>();
         }

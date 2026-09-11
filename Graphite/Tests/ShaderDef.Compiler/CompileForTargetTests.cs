@@ -12,9 +12,10 @@ public class CompileForTargetTests
     public void CompilesEveryRegisteredBackend()
     {
         VariantResult variant = CompilerTestHarness.CompileGraphics(
-            () => new VulkanCompiler());
+            () => new VulkanCompiler(),
+            () => new WebGPUCompiler());
 
-        GraphicsBackend[] expected = [GraphicsBackend.Vulkan];
+        GraphicsBackend[] expected = [GraphicsBackend.Vulkan, GraphicsBackend.WebGPU];
 
         Assert.Equal(expected.Length, variant.Backends.Length);
 

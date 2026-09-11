@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-browser</TargetFramework>
+        <!-- The browser-wasm runtime identifier is what makes the SDK emit a runnable AppBundle. -->
+        <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+        <OutputType>Exe</OutputType>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>HelloTriangle.Web</AssemblyName>
+        <RootNamespace>Prowl.Graphite.Samples.Web.HelloTriangle</RootNamespace>
+        <WasmMainJSPath>wwwroot/main.js</WasmMainJSPath>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shared.Web\Shared.Web.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <WasmExtraFilesToDeploy Include="wwwroot\index.html" />
+        <WasmExtraFilesToDeploy Include="..\Shared.Web\wwwroot\graphite-host.js" />
+        <WasmExtraFilesToDeploy Include="..\..\..\Graphite\Platform\WebGPU\Interop\graphite-webgpu.js" />
+    </ItemGroup>
+
+    <!-- Slang cannot run in WebAssembly, so the sample's shader is compiled to WGSL here and shipped
+         as a static asset alongside the manifest describing its bindings. -->
+    <Target Name="PrecompileShaders" BeforeTargets="PrepareForWasmBuild;Build">
+        <PropertyGroup>
+            <ShaderOutDir>$(IntermediateOutputPath)shaders</ShaderOutDir>
+        </PropertyGroup>
+        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)../../../Tools/ShaderPrecompile/ShaderPrecompile.csproj&quot; -- --out &quot;$(ShaderOutDir)&quot; &quot;$(MSBuildThisFileDirectory)../../HelloTriangle/Shader.slang&quot;" />
+
+        <!-- Added inside the target: the files do not exist when item globs are first evaluated. -->
+        <ItemGroup>
+            <WasmExtraFilesToDeploy Include="$(ShaderOutDir)/*.wgsl;$(ShaderOutDir)/*.shader.json" />
+        </ItemGroup>
+    </Target>
+
+</Project>

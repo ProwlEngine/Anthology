@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>Graphite WebGPU interop proof</title>
+<style>
+  body { background:#14181b; color:#dfe6e9; font:14px/1.5 system-ui, sans-serif; margin:0; padding:24px; }
+  h1 { font-size:17px; font-weight:600; margin:0 0 4px; }
+  p.sub { color:#8b9aa3; margin:0 0 18px; }
+  canvas { border:1px solid #2b3439; display:block; margin:0 0 16px; }
+  #result { font-weight:600; padding:8px 12px; border-radius:3px; display:inline-block; margin-bottom:14px; }
+  #result.pass { background:#12352c; color:#66d6a8; }
+  #result.fail { background:#3a1c17; color:#f08a70; }
+  #log { white-space:pre-wrap; font-family:ui-monospace, Menlo, monospace; font-size:12px; color:#9fb0ba; }
+</style>
+</head>
+<body>
+  <h1>Graphite WebGPU interop proof</h1>
+  <p class="sub">C# in WebAssembly drawing a triangle through WgpuInterop. No Graphite device involved.</p>
+  <canvas id="graphite-canvas" width="400" height="400"></canvas>
+  <div id="result">running...</div>
+  <div id="log"></div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
