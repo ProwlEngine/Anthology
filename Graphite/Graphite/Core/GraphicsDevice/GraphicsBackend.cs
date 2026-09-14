@@ -9,4 +9,9 @@ public enum GraphicsBackend : byte
     /// Vulkan.
     /// </summary>
     Vulkan,
+
+    /// <summary>
+    /// WebGPU, running against the browser's implementation.
+    /// </summary>
+    WebGPU,
 }

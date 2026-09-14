@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-browser</TargetFramework>
+        <!-- The browser-wasm runtime identifier is what makes the SDK emit a runnable AppBundle;
+             the browser target framework alone only produces a plain assembly. -->
+        <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+        <OutputType>Exe</OutputType>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsPackable>false</IsPackable>
+        <WasmMainJSPath>wwwroot/main.js</WasmMainJSPath>
+        <!-- Tests/Directory.Build.props brings in the test SDK, which generates its own entry point
+             and would replace this app's Main. This is a browser app, not an xunit project. -->
+        <IsTestProject>false</IsTestProject>
+        <GenerateProgramFile>false</GenerateProgramFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\..\..\Graphite\Prowl.Graphite.csproj" />
+        <ProjectReference Include="..\..\..\..\ShaderDef\Core\Prowl.Graphite.ShaderDef.csproj" />
+    </ItemGroup>
+
+    <!-- The shim is served beside the app rather than embedded, so the browser loads it as a module. -->
+    <ItemGroup>
+        <WasmExtraFilesToDeploy Include="..\..\..\..\Graphite\Platform\WebGPU\Interop\graphite-webgpu.js" />
+        <WasmExtraFilesToDeploy Include="wwwroot\index.html" />
+        <WasmExtraFilesToDeploy Include="wwwroot\proof.js" />
+    </ItemGroup>
+
+    <!-- Compiling the sample's Slang to WGSL here proves the precompile step works as a build step,
+         not just as something run by hand. -->
+    <Target Name="PrecompileShaders" BeforeTargets="PrepareForWasmBuild;Build">
+        <PropertyGroup>
+            <ShaderOutDir>$(IntermediateOutputPath)shaders</ShaderOutDir>
+        </PropertyGroup>
+        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)../../../../Tools/ShaderPrecompile/ShaderPrecompile.csproj&quot; -- --out &quot;$(ShaderOutDir)&quot; &quot;$(MSBuildThisFileDirectory)../../../../Samples/HelloTriangle/Shader.slang&quot;" />
+
+        <!-- Added inside the target: the files do not exist when item globs are first evaluated. -->
+        <ItemGroup>
+            <WasmExtraFilesToDeploy Include="$(ShaderOutDir)/*.wgsl;$(ShaderOutDir)/*.shader.json" />
+        </ItemGroup>
+    </Target>
+
+</Project>

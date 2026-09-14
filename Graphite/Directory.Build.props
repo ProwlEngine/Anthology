@@ -16,6 +16,7 @@
     <!-- Backend exclusion flags (set to true to exclude a backend from the build) -->
     <PropertyGroup>
         <ExcludeVulkan>false</ExcludeVulkan>
+        <ExcludeWebGPU>false</ExcludeWebGPU>
     </PropertyGroup>
 
     <PropertyGroup>

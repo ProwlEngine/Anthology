@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0-browser</TargetFramework>
+        <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+        <OutputType>Exe</OutputType>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsPackable>false</IsPackable>
+        <AssemblyName>CubeGrid.Web</AssemblyName>
+        <RootNamespace>Prowl.Graphite.Samples.Web.CubeGrid</RootNamespace>
+        <WasmMainJSPath>wwwroot/main.js</WasmMainJSPath>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Shared.Web\Shared.Web.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <WasmExtraFilesToDeploy Include="wwwroot\index.html" />
+        <WasmExtraFilesToDeploy Include="..\Shared.Web\wwwroot\graphite-host.js" />
+        <WasmExtraFilesToDeploy Include="..\..\..\Graphite\Platform\WebGPU\Interop\graphite-webgpu.js" />
+        <!-- The image is the desktop sample's own, fetched over HTTP and decoded by the browser. -->
+        <WasmExtraFilesToDeploy Include="..\..\CubeGrid\Cat_cat.png" />
+    </ItemGroup>
+
+    <!-- Slang cannot run in WebAssembly, so the shader is compiled to WGSL here and shipped as a
+         static asset alongside the manifest describing its bindings. -->
+    <Target Name="PrecompileShaders" BeforeTargets="PrepareForWasmBuild;Build">
+        <PropertyGroup>
+            <ShaderOutDir>$(IntermediateOutputPath)shaders</ShaderOutDir>
+        </PropertyGroup>
+        <Exec Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)../../../Tools/ShaderPrecompile/ShaderPrecompile.csproj&quot; -- --out &quot;$(ShaderOutDir)&quot; &quot;$(MSBuildThisFileDirectory)Shader.slang&quot;" />
+        <ItemGroup>
+            <WasmExtraFilesToDeploy Include="$(ShaderOutDir)/*.wgsl;$(ShaderOutDir)/*.shader.json" />
+        </ItemGroup>
+    </Target>
+
+</Project>

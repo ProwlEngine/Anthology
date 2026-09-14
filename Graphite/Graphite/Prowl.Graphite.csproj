@@ -1,20 +1,45 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <!-- The browser target exists for the WebGPU backend: the JavaScript interop it is built on
+             only exists under a browser platform target. Nothing else differs between the two. -->
+        <TargetFrameworks>net10.0;net10.0-browser</TargetFrameworks>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <OutputType>Library</OutputType>
     </PropertyGroup>
 
     <PropertyGroup>
         <PackageId>Prowl.Graphite</PackageId>
-        <Description>A low-level, hardware-accelerated graphics and compute library for .NET, with a Vulkan backend. Graphite can be used to create high-performance 2D and 3D games, simulations, tools, and other graphical applications.</Description>
-        <PackageTags>3D Graphics Vulkan Core Game</PackageTags>
+        <Description>A low-level, hardware-accelerated graphics and compute library for .NET, with Vulkan and WebGPU backends. Graphite can be used to create high-performance 2D and 3D games, simulations, tools, and other graphical applications.</Description>
+        <PackageTags>3D Graphics Vulkan WebGPU WebAssembly Core Game</PackageTags>
+    </PropertyGroup>
+
+    <!-- Each target carries only the backend it can run. Vulkan has no browser implementation, and
+         the WebGPU backend's interop does not exist anywhere else. Either can still be excluded by
+         hand through the flags in Directory.Build.props.
+         Conditioned on the target framework rather than TargetPlatformIdentifier, which the SDK does
+         not derive until its targets are imported, well after this file's body is evaluated. -->
+    <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-browser'">
+        <ExcludeVulkan>true</ExcludeVulkan>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+        <ExcludeWebGPU>true</ExcludeWebGPU>
     </PropertyGroup>
 
     <PropertyGroup>
         <DefineConstants Condition="'$(ExcludeVulkan)' == 'true'">$(DefineConstants);EXCLUDE_VULKAN_BACKEND</DefineConstants>
+        <DefineConstants Condition="'$(ExcludeWebGPU)' == 'true'">$(DefineConstants);EXCLUDE_WEBGPU_BACKEND</DefineConstants>
     </PropertyGroup>
+
+    <!-- An excluded backend drops out of the compile entirely. The defines above only guard the few
+         places in Core that name a backend; the platform folders themselves are removed here so they
+         never need per-file #if walls. Backend code lives under three parallel roots (the backend
+         proper, plus its Profiling and ValidationLayers extensions), so the glob is rooted loosely. -->
+    <ItemGroup>
+        <Compile Remove="**/Platform/Vulkan/**/*.cs" Condition="'$(ExcludeVulkan)' == 'true'" />
+        <Compile Remove="**/Platform/WebGPU/**/*.cs" Condition="'$(ExcludeWebGPU)' == 'true'" />
+    </ItemGroup>
 
     <ItemGroup>
         <!-- Silk.NET Vulkan -->
@@ -29,7 +54,15 @@
         <PackageReference Include="Silk.NET.MoltenVK.Native" Version="$(SilkNetVersion)" Condition="'$(ExcludeVulkan)' != 'true'" />
     </ItemGroup>
 
+    <!-- The WebGPU shim is JavaScript, so it ships beside the assembly for an app to serve. -->
+    <ItemGroup Condition="'$(ExcludeWebGPU)' != 'true'">
+        <Content Include="Platform\WebGPU\Interop\graphite-webgpu.js" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="Platform\WebGPU\Interop\graphite-webgpu.js" Pack="true" PackagePath="content\" />
+    </ItemGroup>
+
     <ItemGroup>
         <InternalsVisibleTo Include="Prowl.Graphite.Tests" />
+        <!-- Drives the interop layer directly, to exercise that boundary on its own. -->
+        <InternalsVisibleTo Include="InteropProof" />
     </ItemGroup>
 </Project>
