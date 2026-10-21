@@ -477,8 +477,19 @@ internal sealed class ChainTexture(string name) : IDisposable
 /// </summary>
 internal sealed class FeatureChain(GraphicsDevice device, int viewId, List<IDisposable> retired) : IDisposable
 {
-    /// <summary>The scene's colour, motion, normal and material formats, a view taking as many as its targets need.</summary>
-    public static readonly PixelFormat[] SceneFormats = [PixelFormat.R16_G16_B16_A16_Float, PixelFormat.R16_G16_Float, PixelFormat.R16_G16_SNorm, PixelFormat.R8_G8_UNorm];
+    /// <summary>
+    /// The scene's colour, motion, normal and material formats, a view taking as many as its targets need. Normals are
+    /// RG16 snorm, or RG16 float where the device cannot draw to it, holding the same signed octahedral values.
+    /// </summary>
+    internal static PixelFormat[] SceneFormats(Func<PixelFormat, bool> drawable)
+        => [PixelFormat.R16_G16_B16_A16_Float, PixelFormat.R16_G16_Float, drawable(PixelFormat.R16_G16_SNorm) ? PixelFormat.R16_G16_SNorm : PixelFormat.R16_G16_Float, PixelFormat.R8_G8_UNorm];
+
+    /// <summary>The scene's depth, D32 float, or D16 which every device can draw to and sample.</summary>
+    internal static PixelFormat SceneDepth(Func<PixelFormat, bool> drawable)
+        => drawable(PixelFormat.D32_Float) ? PixelFormat.D32_Float : PixelFormat.D16_UNorm;
+
+    private readonly PixelFormat[] _sceneFormats = SceneFormats(format => device.GetPixelFormatSupport(format, TextureType.Texture2D, TextureUsage.RenderTarget | TextureUsage.Sampled));
+    private readonly PixelFormat _sceneDepth = SceneDepth(format => device.GetPixelFormatSupport(format, TextureType.Texture2D, TextureUsage.DepthStencil | TextureUsage.Sampled));
 
     /// <summary>The colour format of an LDR view's scene and the colours after it.</summary>
     public const PixelFormat LdrColorFormat = PixelFormat.R8_G8_B8_A8_UNorm_SRgb;
@@ -577,10 +588,10 @@ internal sealed class FeatureChain(GraphicsDevice device, int viewId, List<IDisp
     public bool Ensure(uint width, uint height, int layers, SceneTargets targets, uint outputWidth, uint outputHeight, bool ldr)
     {
         (_width, _height, _layers, _outputWidth, _outputHeight) = (width, height, layers > 1 ? (uint)layers : 0, outputWidth, outputHeight);
-        _colorFormat = ldr ? LdrColorFormat : SceneFormats[0];
-        PixelFormat[] formats = SceneFormats[..SceneTargetCount(targets)];
+        _colorFormat = ldr ? LdrColorFormat : _sceneFormats[0];
+        PixelFormat[] formats = _sceneFormats[..SceneTargetCount(targets)];
         formats[0] = _colorFormat;
-        bool changed = Scene.Ensure(device, new RenderTextureDescription(width, height, formats, PixelFormat.D32_Float) { ArrayLayers = _layers }, Retired);
+        bool changed = Scene.Ensure(device, new RenderTextureDescription(width, height, formats, _sceneDepth) { ArrayLayers = _layers }, Retired);
         foreach (ChainTexture color in (ChainTexture[])[.. Colors, .. OutputColors])
         {
             if (color.Texture != null)

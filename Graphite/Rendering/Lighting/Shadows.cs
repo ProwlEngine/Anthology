@@ -1042,6 +1042,9 @@ internal sealed partial class FramePipeline
 
     // Whether the device blits the shadow format, else shrinking lights draw again
     private bool BlitShadows => _blitShadows ??= _device.SupportsBlit(ShadowFormat, depthFormat: true);
+
+    // The largest power of two shadow map up to a cap that the device can make, at least the smallest one asked for
+    private uint LargestShadowMap(uint cap) => Math.Max(256u, Math.Min(cap, 1u << BitOperations.Log2(Math.Max(_device.Limits.MaxTextureDimension2D, 1u))));
     private readonly List<IDisposable> _shadowRetired = new();
     private Sampler? _shadowSampler;
 
@@ -1136,7 +1139,7 @@ internal sealed partial class FramePipeline
         WorldShadows shadows = world.Shadows ??= new WorldShadows(_device);
         ShadowSettings settings = world.World.ShadowSnapshot;
         WorldLighting lighting = world.World.Lighting;
-        int pageSize = (int)Math.Clamp(BitOperations.RoundUpToPowerOf2((uint)Math.Max(settings.PageSize, 256)), 256u, 16384u);
+        int pageSize = (int)Math.Clamp(BitOperations.RoundUpToPowerOf2((uint)Math.Max(settings.PageSize, 256)), 256u, LargestShadowMap(16384u));
         if (shadows.PageSize != pageSize)
         {
             foreach ((int index, LightShadow light) in shadows.Lights)
@@ -2031,7 +2034,7 @@ internal sealed partial class FramePipeline
     private void PrepareLightCascades(CameraFrame camera, ViewShadows state, in LightDesc light, int index, bool around)
     {
         int count = Math.Clamp((int)light.Shadow.Cascades, 1, ViewShadows.MaxCascades);
-        uint resolution = Math.Clamp(BitOperations.RoundUpToPowerOf2(Math.Max(light.Shadow.Resolution, 1u)), 256u, 8192u);
+        uint resolution = Math.Clamp(BitOperations.RoundUpToPowerOf2(Math.Max(light.Shadow.Resolution, 1u)), 256u, LargestShadowMap(8192u));
         int at = state.Lights.FindIndex(l => l.Light == index);
         if (at >= 0 && state.Lights[at].Resolution != resolution)
         {
