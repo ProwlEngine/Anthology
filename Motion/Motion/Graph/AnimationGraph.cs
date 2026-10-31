@@ -186,6 +186,8 @@ public sealed class AnimationGraph
     /// <summary>Adds a node blending any number of poses by their own (normalized) weights.</summary>
     public int AddWeightedBlend(IReadOnlyList<WeightedPose> inputs) => AddNode(new WeightedBlendDefinition(inputs));
 
+    public int AddWeightedBlend(IReadOnlyList<WeightedPose> inputs,bool SynchronizeTiming = false,bool loop = true) => AddNode(new WeightedBlendDefinition(inputs){SynchronizeTiming = SynchronizeTiming,Loop = loop});
+
     /// <summary>Adds a node easing toward its child, closing half the remaining gap every half life.</summary>
     public int AddPoseSmoothing(int child, FloatInput halfLifeSeconds) => AddNode(new PoseSmoothingDefinition(child, halfLifeSeconds));
 
