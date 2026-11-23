@@ -97,8 +97,7 @@ vec3 Graphite_SampleReflectionProbe(Graphite_ReflectionProbe probe, vec3 p, vec3
     return Graphite_SampleProbeCube(cube & 0xFFFFu, cube >> 16, dir, roughness) * (probe.params.x * Graphite_Exposure());
 }
 
-// Walks the reflection probes whose box holds the point, giving each with the point in its box space. Binned probes
-// come with those of the rest of the wave, so check the box.
+// Walks the reflection probes whose box holds the point, giving each with the point in its box space
 #ifdef GRAPHITE_BINNED
 struct Graphite_ProbeIterator
 {
@@ -116,14 +115,19 @@ Graphite_ProbeIterator Graphite_BeginProbes(vec3 relativePos)
     return it;
 }
 
-// The pixels of a wave take the same probes in step, so a binned probe may not hold the point: check its box
 bool Graphite_NextProbe(inout Graphite_ProbeIterator it, out Graphite_ReflectionProbe probe, out vec3 local)
 {
-    if (!Graphite_NextBin(it.walk, it.index))
-        return false;
-    probe = Graphite_ProbeAt(Graphite_BinnedRecords(GRAPHITE_SET_PROBES), it.index);
-    local = Graphite_ProbeLocal(probe, it.position, vec3(0.0), Graphite_View().treeOffset.xyz);
-    return true;
+    uint array = Graphite_BinnedRecords(GRAPHITE_SET_PROBES);
+    vec3 offsetLow = Graphite_View().treeOffset.xyz;
+    while (Graphite_NextBin(it.walk, it.index))
+    {
+        probe = Graphite_ProbeAt(array, it.index);
+        local = Graphite_ProbeLocal(probe, it.position, vec3(0.0), offsetLow);
+        vec3 inside = probe.box.xyz - abs(local);
+        if (min(inside.x, min(inside.y, inside.z)) > 0.0)
+            return true;
+    }
+    return false;
 }
 
 // The hit of the probe the iterator last gave
@@ -211,8 +215,6 @@ Graphite_ProbeSet Graphite_FindProbes(vec3 relativePos)
     {
         vec3 inside3 = probe.box.xyz - abs(p);
         float inside = min(inside3.x, min(inside3.y, inside3.z));
-        if (inside <= 0.0)
-            continue;
         float w = probe.box.w > 0.0 ? clamp(inside / probe.box.w, 0.0, 1.0) : 1.0;
         float pr = probe.params.z;
         uint cb = floatBitsToUint(probe.params.w) & 0xFFFFu;
