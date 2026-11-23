@@ -10,7 +10,9 @@
 // Fragments find lights, decals and reflection probes by bins instead, see Graphite_BeginBins: the view's items of each
 // sit nearest first in a record array after every set's, and a pass before the view draws marks which reach each depth
 // bin and screen tile, so a fragment walks a few mask words in registers and never holds a traversal stack. Compute
-// shaders, host sets and a shader defining GRAPHITE_SPATIAL_TREES walk the trees.
+// shaders, host sets and a shader defining GRAPHITE_SPATIAL_TREES walk the trees. A binned query finds what may reach the
+// fragment's own pixel at the point's depth, so query at the surface the fragment shades: a shader lighting a point
+// elsewhere on screen, a ray marched hit say, defines GRAPHITE_SPATIAL_TREES.
 #pragma once
 
 #extension GL_EXT_nonuniform_qualifier : require
@@ -346,46 +348,89 @@ uint Graphite_BinRangeMask(uint word, uint first, uint last)
 }
 
 #ifdef GRAPHITE_BINNED
+// A wave walks the union of its pixels' candidates in lockstep, so each item's record is read once for the whole wave
+// rather than once per pixel. Every pixel still tests each item against itself. GRAPHITE_NO_SUBGROUPS walks each pixel's own.
+#ifndef GRAPHITE_NO_SUBGROUPS
+#extension GL_KHR_shader_subgroup_vote : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
+
 // Word 0 the words of a layer, then each layer's: forward axis, bin scale and bias, tiles across and down, each set's
 // mask words a tile and where its masks start, then per set GRAPHITE_Z_BINS first and last items as 16 bits each,
 // all ones for none, then per set every tile's mask words together. See SpatialBinPass.
 layout(set = 1, binding = 48, std430) readonly buffer Graphite_SpatialBins { uint graphite_SpatialBins[]; };
 
-// The items of a set whose depth bin and screen tile hold a fragment, nearest first. Their records are in
-// Graphite_BinnedRecords(set), camera relative to the first layer, so offset by Graphite_View().treeOffset.
+// The items of a set whose depth bin and screen tile may hold a fragment, nearest first, with those of the other pixels
+// of its wave. Their records are in Graphite_BinnedRecords(set), camera relative to the first layer, so offset by
+// Graphite_View().treeOffset. Walk one to its end without leaving early, so the wave stays in step.
 struct Graphite_BinWalk
 {
-    uint masks;              // the tile's first mask word of the set
-    uint word;               // the mask word being walked
-    uint first;              // the bin's first and last items
+    uint masks;              // the pixel's tile's first mask word of the set
+    uint first;              // the pixel's bin's first and last items, first above last for none
     uint last;
+    uint word;               // the mask word being walked, and the wave's last
+    uint lastWord;
     uint bits;               // the items of word not given yet
 };
+
+// The pixel's own items of a mask word
+uint graphite_BinBits(Graphite_BinWalk w, uint word)
+{
+    if (w.first > w.last || word < (w.first >> 5) || word > (w.last >> 5))
+        return 0u;
+    return graphite_SpatialBins[w.masks + word] & Graphite_BinRangeMask(word, w.first, w.last);
+}
+
+// The items of a mask word of every pixel of the wave on the same word
+uint graphite_MergeBins(uint word, uint bits)
+{
+#ifndef GRAPHITE_NO_SUBGROUPS
+    if (subgroupAllEqual(word))
+        return subgroupOr(bits);
+#endif
+    return bits;
+}
 
 void Graphite_BeginBins(out Graphite_BinWalk w, vec3 relativePos, uint set)
 {
     w.masks = 0u;
-    w.word = 0u;
     w.first = 1u;
     w.last = 0u;
-    w.bits = 0u;
     uint base = 1u + (graphite_Push.viewBase + GRAPHITE_VIEW_INDEX) * graphite_SpatialBins[0];
     uvec2 tiles = uvec2(graphite_SpatialBins[base + 5u], graphite_SpatialBins[base + 6u]);
-    if (tiles.x == 0u)
+    if (tiles.x != 0u)
+    {
+        vec3 forward = uintBitsToFloat(uvec3(graphite_SpatialBins[base], graphite_SpatialBins[base + 1u], graphite_SpatialBins[base + 2u]));
+        vec2 scaleBias = uintBitsToFloat(uvec2(graphite_SpatialBins[base + 3u], graphite_SpatialBins[base + 4u]));
+        uint bin = Graphite_ZBin(dot(relativePos, forward), scaleBias.x, scaleBias.y);
+        uint range = graphite_SpatialBins[base + GRAPHITE_BIN_HEADER + set * GRAPHITE_Z_BINS + bin];
+        if (range != 0xFFFFFFFFu)
+        {
+            uvec2 tile = min(uvec2(gl_FragCoord.xy) / GRAPHITE_BIN_TILE, tiles - 1u);
+            uint words = graphite_SpatialBins[base + 7u + set];
+            w.masks = base + graphite_SpatialBins[base + 10u + set] + (tile.y * tiles.x + tile.x) * words;
+            w.first = range & 0xFFFFu;
+            w.last = range >> 16;
+        }
+    }
+
+    // The wave walks from the first word any of its pixels needs to the last
+    uint firstWord = w.first <= w.last ? w.first >> 5 : 0xFFFFFFFFu;
+    uint lastWord = w.first <= w.last ? w.last >> 5 : 0u;
+#ifndef GRAPHITE_NO_SUBGROUPS
+    firstWord = subgroupMin(firstWord);
+    lastWord = subgroupMax(lastWord);
+#endif
+    if (firstWord > lastWord)
+    {
+        w.word = 0u;
+        w.lastWord = 0u;
+        w.bits = 0u;
         return;
-    vec3 forward = uintBitsToFloat(uvec3(graphite_SpatialBins[base], graphite_SpatialBins[base + 1u], graphite_SpatialBins[base + 2u]));
-    vec2 scaleBias = uintBitsToFloat(uvec2(graphite_SpatialBins[base + 3u], graphite_SpatialBins[base + 4u]));
-    uint bin = Graphite_ZBin(dot(relativePos, forward), scaleBias.x, scaleBias.y);
-    uint range = graphite_SpatialBins[base + GRAPHITE_BIN_HEADER + set * GRAPHITE_Z_BINS + bin];
-    if (range == 0xFFFFFFFFu)
-        return;
-    uvec2 tile = min(uvec2(gl_FragCoord.xy) / GRAPHITE_BIN_TILE, tiles - 1u);
-    uint words = graphite_SpatialBins[base + 7u + set];
-    w.masks = base + graphite_SpatialBins[base + 10u + set] + (tile.y * tiles.x + tile.x) * words;
-    w.first = range & 0xFFFFu;
-    w.last = range >> 16;
-    w.word = w.first >> 5;
-    w.bits = graphite_SpatialBins[w.masks + w.word] & Graphite_BinRangeMask(w.word, w.first, w.last);
+    }
+    w.word = firstWord;
+    w.lastWord = lastWord;
+    w.bits = graphite_MergeBins(w.word, graphite_BinBits(w, w.word));
 }
 
 // The next item's index in the set's binned records
@@ -400,10 +445,10 @@ bool Graphite_NextBin(inout Graphite_BinWalk w, out uint index)
             w.bits &= w.bits - 1u;
             return true;
         }
-        if (w.first > w.last || w.word >= (w.last >> 5))
+        if (w.word >= w.lastWord)
             return false;
         w.word++;
-        w.bits = graphite_SpatialBins[w.masks + w.word] & Graphite_BinRangeMask(w.word, w.first, w.last);
+        w.bits = graphite_MergeBins(w.word, graphite_BinBits(w, w.word));
     }
     return false;
 }

@@ -22,6 +22,7 @@
 // Cookies and profiles are compiled in while a light of the world has one
 #pragma variant global GRAPHITE_LIGHT_MASKS
 
+#define GRAPHITE_LIGHT_NONE 0        // a binned light that does not reach the point, which nothing shades
 #define GRAPHITE_LIGHT_POINT 1
 #define GRAPHITE_LIGHT_SPOT 2
 #define GRAPHITE_LIGHT_RECT 3
@@ -48,7 +49,7 @@ struct Graphite_LightSample
 {
     vec3  position;          // camera relative
     float range;
-    int   type;              // 1 point, 2 spot, 3 rect, 4 disk, 5 tube
+    int   type;              // 1 point, 2 spot, 3 rect, 4 disk, 5 tube, 0 none
     uint  recordArray;       // the record array and first word of its record, GRAPHITE_TREE_INVALID for a light built in the shader
     uint  recordWord;
     vec3  color;             // the rest of a light built in the shader
@@ -128,8 +129,10 @@ void Graphite_ReadLight(uint array, uint index, vec3 offset, vec3 offsetLow, out
 }
 
 #ifdef GRAPHITE_BINNED
-// The lights whose spheres hold a point and that light the surface's layers, found through the view's bins as each is
-// asked for, so a fragment holds no list of them. Each light's shadow is looked up as it is shaded.
+// The lights that may reach a point, found through the view's bins as each is asked for, so a fragment holds no list
+// of them. The pixels of a wave take the same lights in step, so a light whose sphere misses the point or that lights
+// none of the surface's layers comes as GRAPHITE_LIGHT_NONE, which Graphite_ContributeLocal skips. Each light's shadow
+// is looked up as it is shaded.
 struct Graphite_LightIterator
 {
     Graphite_BinWalk walk;
@@ -148,20 +151,15 @@ Graphite_LightIterator Graphite_BeginLights(vec3 relativePos)
 
 bool Graphite_NextLight(inout Graphite_LightIterator it, out Graphite_LightSample L)
 {
-    uint array = Graphite_BinnedRecords(GRAPHITE_SET_LIGHTS);
-    vec3 offsetLow = Graphite_View().treeOffset.xyz;
     uint index;
-    while (Graphite_NextBin(it.walk, index))
-    {
-        vec4 positionRange = Graphite_SpatialVec4(array, index * 9u);
-        precise vec3 position = positionRange.xyz - offsetLow;
-        vec3 d = it.position - position;
-        if (dot(d, d) > positionRange.w * positionRange.w || (floatBitsToUint(Graphite_SpatialVec4(array, index * 9u + 6u).w) & it.layers) == 0u)
-            continue;
-        Graphite_ReadLight(array, index, vec3(0.0), offsetLow, L);
-        return true;
-    }
-    return false;
+    if (!Graphite_NextBin(it.walk, index))
+        return false;
+    uint array = Graphite_BinnedRecords(GRAPHITE_SET_LIGHTS);
+    Graphite_ReadLight(array, index, vec3(0.0), Graphite_View().treeOffset.xyz, L);
+    vec3 d = it.position - L.position;
+    if (dot(d, d) > L.range * L.range || (floatBitsToUint(Graphite_SpatialVec4(array, index * 9u + 6u).w) & it.layers) == 0u)
+        L.type = GRAPHITE_LIGHT_NONE;
+    return true;
 }
 
 // Binned lights look their shadows up as they are shaded
@@ -454,6 +452,8 @@ vec3 graphite_ShadowNormal(vec3 geomNormal, vec3 L)
 // What a local light gives a frame. backLit keeps lights behind the surface. lookUp finds its shadow here, else it is knownShadow.
 bool graphite_ContributeLocal(Graphite_LightSample L, Graphite_LightFrame f, bool backLit, bool lookUp, float knownShadow, out Graphite_LightContribution c)
 {
+    if (L.type == GRAPHITE_LIGHT_NONE)
+        return false;
     vec3 toLight = L.position - f.position;
     float dist2 = dot(toLight, toLight);
     float dist = sqrt(dist2);

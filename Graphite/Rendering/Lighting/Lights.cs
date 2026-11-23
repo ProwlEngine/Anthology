@@ -1622,7 +1622,7 @@ internal abstract class SpatialIndex(int slot)
 
     /// <summary>
     /// Gathers the items the view sees for fragments to find by screen tile and depth, nearest first along forward, the
-    /// view's camera relative axis: their records packed camera relative into the view's binned records, and their
+    /// view's camera relative axis, or nearest the camera for a view of several layers: their records packed camera relative into the view's binned records, and their
     /// camera relative spheres appended to spheres. Call after <see cref="BuildView"/>, whose regions in view it reads.
     /// Returns how many it binned, at most <see cref="MaxBinned"/>. Render thread.
     /// </summary>
@@ -1797,13 +1797,16 @@ internal sealed class SpatialIndex<TRecord> : SpatialIndex where TRecord : unman
             _binKeys = new float[count * 2];
             _binItems = new int[count * 2];
         }
+        // A view of several layers looks many ways, so its items go nearest the camera first, kept for every layer alike
+        bool byDistance = frustum.Layers > 1;
         Span<float> keys = _binKeys.AsSpan(0, count);
         Span<int> items = _binItems.AsSpan(0, count);
         for (int i = 0; i < count; i++)
         {
             int item = _binned[i];
             Float3 p = frustum.Relative(_center[item]);
-            keys[i] = p.X * forward.X + p.Y * forward.Y + p.Z * forward.Z - _radius[item];
+            float depth = byDistance ? MathF.Sqrt(p.X * p.X + p.Y * p.Y + p.Z * p.Z) : p.X * forward.X + p.Y * forward.Y + p.Z * forward.Z;
+            keys[i] = depth - _radius[item];
             items[i] = item;
         }
         keys.Sort(items);
