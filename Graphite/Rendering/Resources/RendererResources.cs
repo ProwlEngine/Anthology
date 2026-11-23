@@ -88,6 +88,8 @@ internal sealed class RendererResources : IDisposable
         device.UpdateTexture<float>(NoFarShadowMap, [-1e30f], TextureRegion.Whole(NoFarShadowMap, 0, 0));
         NoFarShadowData = factory.CreateBuffer(new BufferDescription(FarShadowRecord.Size, BufferUsage.StructuredBufferReadOnly));
         device.UpdateBuffer(NoFarShadowData, 0, new FarShadowRecord());
+        NoSpatialBins = factory.CreateBuffer(new BufferDescription(256, BufferUsage.StructuredBufferReadOnly));
+        device.UpdateBuffer<uint>(NoSpatialBins, 0, new uint[64]);
         NoVoxels = factory.CreateBuffer(new BufferDescription(VoxelHeader.Size + 4, BufferUsage.StructuredBufferReadWrite));
         device.UpdateBuffer(NoVoxels, 0, new VoxelHeader());
         NoCube = factory.CreateTexture(TextureDescription.CreateCube(1, 1, 1, PixelFormat.R16_G16_B16_A16_Float, TextureUsage.Sampled));
@@ -160,6 +162,9 @@ internal sealed class RendererResources : IDisposable
 
     public Texture NoFarShadowMap { get; }
     public DeviceBuffer NoFarShadowData { get; }
+
+    /// <summary>What views binning nothing bind as their bins and binned records: all zero, a header of no tiles, so no items.</summary>
+    public DeviceBuffer NoSpatialBins { get; }
 
     /// <summary>What views other than a world's voxel view bind as the voxel volume, empty.</summary>
     public DeviceBuffer NoVoxels { get; }
@@ -289,6 +294,7 @@ internal sealed class RendererResources : IDisposable
         NoFogVolume.Dispose();
         NoFarShadowMap.Dispose();
         NoFarShadowData.Dispose();
+        NoSpatialBins.Dispose();
         NoVoxels.Dispose();
         NoCube.Dispose();
         NoExposure.Dispose();
