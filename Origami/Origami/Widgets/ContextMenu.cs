@@ -28,6 +28,16 @@ public sealed class ContextBuilder
 {
     internal readonly List<IContextItem> Items = [];
     internal Action? CloseAction;
+    internal float MinWidth = ContextMenu.MenuWidth;
+    internal float MaxWidth = ContextMenu.MenuWidth;
+
+    /// <summary>Lets the menu grow with its labels, from <paramref name="min"/> up to <paramref name="max"/>.</summary>
+    public ContextBuilder AutoWidth(float min, float max)
+    {
+        MinWidth = Math.Min(min, max);
+        MaxWidth = Math.Max(min, max);
+        return this;
+    }
 
     /// <summary>Add a clickable menu item.</summary>
     /// <param name="label">Row label.</param>
@@ -588,10 +598,33 @@ public static class ContextMenu
         var font = theme.Font;
         if (font == null) return;
 
+        float width = builder.MinWidth;
+        if (builder.MaxWidth > builder.MinWidth)
+        {
+            // Automatic width: fit the widest label, then clamp between the builder's bounds.
+            float widest = 0f;
+            foreach (IContextItem item in builder.Items)
+            {
+                string? label = item switch
+                {
+                    ContextBuilder.CtxItem i => i.Label,
+                    ContextBuilder.CtxHeader h => h.Text,
+                    ContextBuilder.CtxTitle t => t.Text,
+                    ContextBuilder.CtxToggle t => t.Label,
+                    ContextBuilder.CtxSubmenu s => s.Label,
+                    _ => null,
+                };
+                if (!string.IsNullOrEmpty(label))
+                    widest = MathF.Max(widest, (float)paper.MeasureText(label, ContextBuilder.RowFont, font).X);
+            }
+            width = MathF.Min(builder.MaxWidth,
+                MathF.Max(builder.MinWidth, widest + ContextBuilder.IconSize + ContextBuilder.RowPadX * 4f + 24f));
+        }
+
         var menuBox = paper.Box($"{id}_menu")
             .PositionType(PositionType.SelfDirected)
             .Position(x, y)
-            .Width(MenuWidth).Height(UnitValue.Auto)
+            .Width(width).Height(UnitValue.Auto)
             .BackgroundColor(theme.Popover)
             .BorderColor(theme.BorderStrong).BorderWidth(1)
             .Rounded(MenuRadius)
